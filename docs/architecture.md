@@ -25,10 +25,10 @@ CDJs + mixer ----> CDJ module -----+      ^  <-> Lua plugin      --> grandMA3
 | Channel | Direction | Used for |
 | --- | --- | --- |
 | OSC | in | `/PageX/FaderY`, `/KeyY`, `/EncoderY` only. Never `/cmd`. |
-| OSC (Send = Yes) | out, push | Fader values and key state of sequences and masters |
-| Lua plugin | both | Executor assignment, appearance colours, names, page changes, version, resync |
+| OSC (Send = Yes) | out, push | Key press/release with current cue, fader values (~30/s while moving) of sequences, groups and masters. Addressed by object (`/14.14.1.7.<seq>` in 2.5.1), not by executor |
+| Lua plugin | both | Executor assignment, appearance colours, names, page changes (via `HookObjectChange`), version, resync |
 
-Open question: does `HookObjectChange` fire on fader moves, playback state, appearance and page changes? (Milestone M0.)
+M0 result: feedback works push-based. OSC carries playback state and fader values; `HookObjectChange` fires on labels, appearances and page changes, but not on playback or faders. Only the executor mapping and start state are read on connect. Details: [spikes/m0-feedback.md](spikes/m0-feedback.md).
 
 ## MIDI module
 
@@ -77,7 +77,7 @@ Known limits: metadata queries need a player number 1-4 that is actually in use 
 
 ## Milestones
 
-- **M0 Spikes:** test `HookObjectChange`; capture native OSC feedback in onPC 2.5.1.
+- **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
 - **M1 Core:** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
 - **M2 MIDI mapper:** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles.
 - **M3 CDJ discovery and beat:** automatic discovery of CDJs and mixers, beat grid, test setup (emulator, replay, mock).
