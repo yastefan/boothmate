@@ -1,0 +1,15 @@
+[package]
+name = "boothmate"
+version = "0.1.0"
+edition = "2021"
+description = "Portable companion for grandMA3: MIDI controller mapping with feedback and read-only Pro DJ Link"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+keywords = ["grandma3", "midi", "osc", "lighting", "prodjlink"]
+categories = ["multimedia"]
+
+[dependencies]
+
+[profile.release]
+lto = true
+strip = true
