@@ -57,6 +57,15 @@ pub struct Executor {
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
+pub struct Master {
+    pub label: String,
+    /// Values by fader token (`FaderMaster`, ...).
+    pub values: BTreeMap<String, f32>,
+    pub text: Option<String>,
+    pub updated: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Connections {
     pub osc_listen: String,
     pub osc_error: Option<String>,
@@ -79,8 +88,8 @@ pub struct State {
     pub page: Option<u32>,
     pub executors: Vec<Executor>,
     pub sequences: BTreeMap<u32, Sequence>,
-    pub group_masters: BTreeMap<u32, f32>,
-    pub grand_master: Option<f32>,
+    /// Masters (group, grand, speed, ...) by object address, e.g. `14.13.3.1`.
+    pub masters: BTreeMap<String, Master>,
 }
 
 /// A change parsed from one OSC message.
@@ -100,12 +109,13 @@ pub enum OscEvent {
         value: f32,
         name: Option<String>,
     },
-    GroupMaster {
-        group: u32,
-        value: f32,
-    },
-    GrandMaster {
-        value: f32,
+    /// A master: fader token and value (`sif`), or any other arguments.
+    Master {
+        key: String,
+        label: String,
+        token: String,
+        value: Option<f32>,
+        text: Option<String>,
     },
 }
 
@@ -166,10 +176,23 @@ impl State {
                 s.faders.insert(token, value);
                 s.updated = now;
             }
-            OscEvent::GroupMaster { group, value } => {
-                self.group_masters.insert(group, value);
+            OscEvent::Master {
+                key,
+                label,
+                token,
+                value,
+                text,
+            } => {
+                let m = self.masters.entry(key).or_default();
+                m.label = label;
+                if let Some(v) = value {
+                    m.values.insert(token, v);
+                }
+                if text.is_some() {
+                    m.text = text;
+                }
+                m.updated = now;
             }
-            OscEvent::GrandMaster { value } => self.grand_master = Some(value),
         }
     }
 
@@ -244,14 +267,20 @@ mod tests {
             value: 42.0,
             name: Some("A".into()),
         });
-        st.apply_osc(OscEvent::GroupMaster {
-            group: 1,
-            value: 60.0,
-        });
-        st.apply_osc(OscEvent::GrandMaster { value: 80.0 });
+        let master = |key: &str, value: Option<f32>, text: Option<&str>| OscEvent::Master {
+            key: key.into(),
+            label: "Speed 1".into(),
+            token: "FaderMaster".into(),
+            value,
+            text: text.map(Into::into),
+        };
+        st.apply_osc(master("14.13.3.1", Some(60.0), None));
+        st.apply_osc(master("14.13.3.1", None, Some("120 BPM")));
         assert_eq!(st.sequences[&1].faders["FaderMaster"], 42.0);
-        assert_eq!(st.group_masters[&1], 60.0);
-        assert_eq!(st.grand_master, Some(80.0));
+        let m = &st.masters["14.13.3.1"];
+        assert_eq!(m.values["FaderMaster"], 60.0);
+        assert_eq!(m.text.as_deref(), Some("120 BPM"));
+        assert_eq!(m.label, "Speed 1");
     }
 
     #[test]

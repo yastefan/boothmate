@@ -115,8 +115,13 @@ pub fn parse(profile: &Profile, msg: &OscMessage) -> Option<OscEvent> {
         _ => None,
     });
     match (target, value) {
-        (Target::GrandMaster, Some(value)) => Some(OscEvent::GrandMaster { value }),
-        (Target::GroupMaster(group), Some(value)) => Some(OscEvent::GroupMaster { group, value }),
+        (Target::Master { key, label }, value) => Some(OscEvent::Master {
+            key,
+            label,
+            token: action,
+            value,
+            text,
+        }),
         (Target::Sequence(seq), Some(value)) => Some(OscEvent::SequenceFader {
             seq,
             token: action,
@@ -135,7 +140,6 @@ pub fn parse(profile: &Profile, msg: &OscMessage) -> Option<OscEvent> {
                 text: text.unwrap_or_default(),
             })
         }
-        _ => None,
     }
 }
 
@@ -211,7 +215,13 @@ mod tests {
                     vec![s("FaderMaster"), OscType::Int(1), OscType::Float(80.0)]
                 )
             ),
-            Some(OscEvent::GrandMaster { value: 80.0 })
+            Some(OscEvent::Master {
+                key: "14.13.2.1".into(),
+                label: "Grand".into(),
+                token: "FaderMaster".into(),
+                value: Some(80.0),
+                text: None
+            })
         );
         assert_eq!(
             parse(
@@ -221,11 +231,19 @@ mod tests {
                     vec![s("FaderMaster"), OscType::Int(1), OscType::Float(60.0)]
                 )
             ),
-            Some(OscEvent::GroupMaster {
-                group: 1,
-                value: 60.0
+            Some(OscEvent::Master {
+                key: "14.14.1.6.1".into(),
+                label: "Group 1".into(),
+                token: "FaderMaster".into(),
+                value: Some(60.0),
+                text: None
             })
         );
+        // Speed master 1 (Schmiddi's report from onPC 2.5.1.1); argument layout assumed like other masters.
+        assert!(matches!(
+            parse(&p, &msg("/14.13.3.1", vec![s("FaderMaster"), OscType::Int(3), OscType::Float(50.0)])),
+            Some(OscEvent::Master { ref label, value: Some(v), .. }) if label == "Speed 1" && v == 50.0
+        ));
         assert_eq!(parse(&p, &msg("/foo", vec![s("Go+")])), None);
         assert_eq!(parse(&p, &msg("/14.14.1.7.2", vec![])), None);
     }
