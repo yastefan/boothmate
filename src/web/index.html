@@ -125,7 +125,7 @@
       <summary>Tempo to grandMA3</summary>
       <p class="muted">Speed masters follow the BPM of the tempo master (or a fixed player) through the plugin. Beat actions press an executor key on beats, bars and phrases. Saved in <code>tempo.toml</code>.</p>
       <p id="tempo-note" class="hint" hidden></p>
-      <table><thead><tr><th>Speed master</th><th>Follows</th><th>Factor</th><th>Phase reset</th><th>BPM</th><th></th></tr></thead><tbody id="speed-rows"></tbody></table>
+      <table><thead><tr><th>Speed master</th><th>Follows</th><th>Factor</th><th title="FastSync of the phasers on this speed master, on the first beat of every 8-bar phrase">Phaser sync</th><th>BPM</th><th></th></tr></thead><tbody id="speed-rows"></tbody></table>
       <p><button id="speed-add">Add speed master</button></p>
       <table><thead><tr><th>On</th><th>Executor</th><th>Page</th><th>Beats of</th><th></th></tr></thead><tbody id="action-rows"></tbody></table>
       <p><button id="action-add">Add beat action</button></p>
@@ -370,7 +370,7 @@ function renderTempo(st) {
     <td>Master 3.<input type="number" min="1" max="99" value="${l.master}" data-k="speed" data-i="${i}" data-f="master" style="width:4em"></td>
     <td>${playerSel(i, "speed", l.player)}</td>
     <td><select data-k="speed" data-i="${i}" data-f="factor">${[0.25, 0.5, 1, 2, 4].map(f => opt(f, l.factor, "× " + f)).join("")}</select></td>
-    <td><select data-k="speed" data-i="${i}" data-f="phase">${opt("off", l.phase)}${opt("bar", l.phase, "every bar")}${opt("phrase", l.phase, "every phrase")}</select></td>
+    <td><select data-k="speed" data-i="${i}" data-f="phase">${opt("off", l.phase)}${opt("phrase", l.phase, "every phrase")}</select></td>
     <td>${t.sent[l.master] != null ? t.sent[l.master].toFixed(2) + " BPM" : "&ndash;"}</td>
     <td><button data-del="speed" data-i="${i}">Delete</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No speed master linked.</td></tr>`);
   setHtml($("action-rows"), t.rules.action.map((a, i) => `<tr>

@@ -1,8 +1,10 @@
 //! Tempo link: the tempo and beats of the CDJs drive grandMA3.
 //!
 //! - Speed masters follow the BPM of the tempo master (or a fixed player), through the Lua
-//!   plugin (`{"op":"speed","master":1,"bpm":128.0}`), optionally with a phase reset on the
-//!   downbeat (`{"op":"phase","master":1}`).
+//!   plugin (`{"op":"speed","master":1,"bpm":128.0}` = `Master 3.1 At BPM 128`), optionally
+//!   with a phaser re-sync on the first beat of each phrase (`{"op":"phase","master":1}` =
+//!   `FastSync`). grandMA3 counts a FastSync as a Learn tap, so it is only sent once per phrase
+//!   and the plugin restores the exact tempo right after it.
 //! - Beat actions press executor keys over OSC on beats, downbeats, every 4 bars, every phrase
 //!   (8 bars), on track and on master changes.
 //!
@@ -57,8 +59,6 @@ fn one() -> f32 {
 pub enum Phase {
     #[default]
     Off,
-    /// Every downbeat.
-    Bar,
     /// First beat of every 8-bar phrase.
     Phrase,
 }
@@ -189,7 +189,6 @@ impl Engine {
                         }
                         let fire = match l.phase {
                             Phase::Off => false,
-                            Phase::Bar => down,
                             Phase::Phrase => down && bar_in_8 == Some(1),
                         };
                         if fire {
@@ -267,7 +266,7 @@ pub fn save(dir: &Path, rules: &TempoFile) -> Result<(), String> {
     let text = toml::to_string(rules).map_err(|e| e.to_string())?;
     let text = format!(
         "# Tempo link, written by Boothmate. [[speed]]: speed master <master> follows the tempo master\n\
-         # (or <player>), times <factor>; phase = off | bar | phrase. [[action]]: press executor <exec>\n\
+         # (or <player>), times <factor>; phase = off | phrase. [[action]]: press executor <exec>\n\
          # on beat | downbeat | bar4 | phrase | track | master (page absent = current page).\n\n{text}"
     );
     std::fs::write(path(dir), text).map_err(|e| e.to_string())
@@ -541,7 +540,7 @@ mod tests {
                 master: 1,
                 player: None,
                 factor: 1.0,
-                phase: Phase::Bar,
+                phase: Phase::Phrase,
             }],
             action: vec![BeatAction {
                 on: Trigger::Bar4,

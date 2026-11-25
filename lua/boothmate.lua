@@ -2,7 +2,8 @@
 --
 -- Reports what OSC output does not carry: the executors of the current page with their assigned
 -- objects, names, appearance colours and start state, and the grandMA3 version. Boothmate
--- connects to this plugin over TCP; the plugin never changes the show.
+-- connects to this plugin over TCP. The only thing the plugin changes is the tempo of speed
+-- masters (Master 3.x), when Boothmate's tempo link asks for it; no other commands are accepted.
 --
 -- Start:  Plugin "boothmate"                       listen on 127.0.0.1:9002
 --         Plugin "boothmate" "bind=0.0.0.0 token=x" listen on the network, Boothmate must send token x
@@ -11,6 +12,8 @@
 --
 -- Protocol: one JSON object per line.
 --   Boothmate -> plugin  {"op":"hello","token":"..."}  {"op":"resync"}
+--                        {"op":"speed","master":1,"bpm":128.0}  speed master 3.1 to an exact BPM
+--                        {"op":"phase","master":1}              re-sync its phasers (FastSync)
 --   plugin -> Boothmate  {"ev":"hello","plugin":"0.1.0","ma":"2.5.1.1"}
 --                        {"ev":"page","page":1,"executors":[{no,class,obj,name,addr,color,active,fader,cue}]}
 --                        {"ev":"error","msg":"..."}
@@ -26,7 +29,7 @@ local myHandle    = select(4, ...)
 local socket = require("socket")
 local json   = require("json")
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 local DEFAULT_PORT = 9002
 local SNAPSHOT_MIN_INTERVAL = 0.1 -- seconds between page snapshots
 local EXEC_ROWS = { 1, 2, 3, 4 }   -- executor numbers <row>01 .. <row>99
@@ -181,6 +184,41 @@ local function flush(cl)
   return err == nil or err == "timeout"
 end
 
+-- Speed masters (see docs/spikes/m4-speedmaster.md). "At BPM" sets the effective tempo exactly
+-- (also with SpeedScale), does not add to the oops list and costs microseconds. FastSync counts
+-- as a Learn tap, so it is rate limited and followed by the exact tempo again.
+local SPEED_MAX_MASTER = 99
+local PHASE_MIN_INTERVAL = 4 -- seconds between FastSyncs on one master
+S.speed = S.speed or {}
+
+local function setSpeed(n, bpm)
+  n, bpm = math.tointeger(n), tonumber(bpm)
+  if not n or n < 1 or n > SPEED_MAX_MASTER or not bpm or bpm ~= bpm or bpm <= 0 or bpm > 450 then
+    return false
+  end
+  local st = S.speed[n] or {}
+  S.speed[n] = st
+  st.bpm = bpm
+  Cmd(string.format("Master 3.%d At BPM %.2f", n, bpm))
+  return true
+end
+
+local function phase(n)
+  n = math.tointeger(n)
+  if not n or n < 1 or n > SPEED_MAX_MASTER then return false end
+  local st = S.speed[n] or {}
+  S.speed[n] = st
+  local now = os.clock()
+  if st.phased and now - st.phased < PHASE_MIN_INTERVAL then return true end
+  st.phased = now
+  Cmd(string.format("FastSync Master 3.%d", n))
+  if st.bpm then
+    -- The sync counts as a tap: restore the exact tempo.
+    Cmd(string.format("Master 3.%d At BPM %.2f", n, st.bpm))
+  end
+  return true
+end
+
 local function handle(cl, line)
   local ok, msg = pcall(json.decode, line)
   if not ok or type(msg) ~= "table" then return true end
@@ -196,6 +234,12 @@ local function handle(cl, line)
     log("Boothmate connected from %s", tostring(cl.peer))
   elseif msg.op == "resync" and cl.ready then
     S.dirty = true
+  elseif msg.op == "speed" and cl.ready then
+    if not setSpeed(msg.master, msg.bpm) then
+      send(cl, { ev = "error", msg = "bad speed message" })
+    end
+  elseif msg.op == "phase" and cl.ready then
+    phase(msg.master)
   end
   return true
 end

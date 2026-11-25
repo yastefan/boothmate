@@ -2,7 +2,7 @@
 
 A portable companion for grandMA3. Boothmate maps MIDI controllers to executors, sends feedback back to them, and reads the beat and song structure from Pioneer CDJs. It runs without installation from the same USB stick as your show files.
 
-> **Status:** milestone M3. Boothmate connects to grandMA3, shows executors live in a web page, maps MIDI controllers to executors with feedback, and reads tempo, beats and bars from Pioneer CDJs. Sending CDJ events to grandMA3 comes next. See [docs/architecture.md](docs/architecture.md).
+> **Status:** milestone M4. Boothmate connects to grandMA3, shows executors live in a web page, maps MIDI controllers to executors with feedback, reads tempo, beats and bars from Pioneer CDJs, and drives speed masters and executors from them. See [docs/architecture.md](docs/architecture.md).
 
 ## Why
 
@@ -38,6 +38,8 @@ Connect the computer to the DJ Link network (the switch, or a LAN port of the mi
 
 To get play state and beat numbers, Boothmate announces itself as a silent virtual player with device number 7 (`cdj.player` in `boothmate.toml`), so it never takes a player's number. Without this (`cdj.status = false`), it still reads BPM and beats. rekordbox on the same computer blocks the status port. No CDJs at hand? Press **Simulator** in the web page.
 
+**Tempo to grandMA3** (in the DJ Link section): link speed masters to the CDJs. Speed master 3.1 then follows the tempo master's BPM exactly, also when the master moves to another player, optionally at half or double time and with a phaser sync at the start of each phrase. Beat actions press an executor on every beat, bar, 4 bars, phrase, track change or master change. Needs the plugin (version 0.2.0 or later: re-import `lua/boothmate.xml`). Saved in `tempo.toml`.
+
 **Record** in the web page saves the DJ Link traffic to `logs/djlink-*.pcap`. `boothmate --replay <file>` plays such a recording back as if the players were there, and `boothmate --check <file>` shows what Boothmate understood. Before a first test with real players, see [docs/club-checklist.md](docs/club-checklist.md).
 
 ## Notes
@@ -53,6 +55,7 @@ Boothmate/
   boothmate-mac, boothmate-win.exe
   boothmate.toml        settings, created on first start
   midi.toml             MIDI mappings
+  tempo.toml            tempo link (speed masters, beat actions)
   ma-profiles/          grandMA3 version profiles (OSC addresses)
   devices/              MIDI controller profiles
   lua/                  grandMA3 plugin
