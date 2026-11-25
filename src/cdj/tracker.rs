@@ -20,6 +20,12 @@ pub struct CdjState {
     /// Why status (stage 2) is not available, if it is not.
     pub status_note: Option<String>,
     pub simulator: bool,
+    /// Capture file being replayed (`--replay`).
+    pub replay: Option<String>,
+    /// Recording wanted (web UI) and the file being written.
+    pub record: bool,
+    pub recording: Option<String>,
+    pub recorded: u64,
     pub devices: BTreeMap<u8, Device>,
     /// Number of the tempo master.
     pub master: Option<u8>,
@@ -219,7 +225,7 @@ impl CdjState {
                     master,
                 });
                 // Without status packets, the tempo master is unknown: take the player that beats.
-                if !d.status && d.kind != Some(Kind::Mixer) && self.master.is_none() {
+                if !d.status && (1..=6).contains(&b.number) && self.master.is_none() {
                     self.master = Some(b.number);
                     ev.push(Event::Master(self.master));
                 }
@@ -303,14 +309,17 @@ impl CdjState {
     }
 
     fn update_master(&mut self, ev: &mut Vec<Event>) {
-        let master = self
+        let claimed = self
             .devices
             .values()
             .find(|d| d.status && d.master)
             .map(|d| d.number);
-        // Keep a beat-guessed master until a status names one.
-        let any_status = self.devices.values().any(|d| d.status);
-        if master != self.master && (master.is_some() || any_status) {
+        // Keep a beat-guessed master (a player without status) until a status names one.
+        let master = claimed.or_else(|| {
+            self.master
+                .filter(|m| self.devices.get(m).is_some_and(|d| !d.status))
+        });
+        if master != self.master {
             self.master = master;
             ev.push(Event::Master(master));
         }

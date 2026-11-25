@@ -27,6 +27,8 @@ pub struct App {
     pub resync: Notify,
     /// Messages from the test controller in the web UI.
     pub midi_test: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Capture file to replay as DJ Link traffic (`--replay`).
+    pub cdj_replay: Option<PathBuf>,
     /// Socket for OSC input to grandMA3 (executor keys and faders).
     pub osc_out: std::net::UdpSocket,
 }
@@ -38,7 +40,11 @@ impl App {
     }
 }
 
-const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose]
+const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose] [--replay <capture>]
+       boothmate --check <capture>...
+
+--replay plays a DJ Link capture (pcap/pcapng, e.g. logs/djlink-*.pcap) as if the devices were
+on the network. --check prints what Boothmate understands in a capture.
 
 Reads boothmate.toml, midi.toml, ma-profiles/, devices/ and lua/ from the data folder. The default data folder is
 the folder that holds the binary.";
@@ -67,11 +73,32 @@ fn data_dir(arg: Option<PathBuf>) -> PathBuf {
 fn main() {
     let mut dir = None;
     let mut verbose = false;
+    let mut replay = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--dir" => dir = args.next().map(PathBuf::from),
             "-v" | "--verbose" => verbose = true,
+            "--replay" => replay = args.next().map(PathBuf::from),
+            "--check" => {
+                let mut failed = false;
+                for f in args.by_ref() {
+                    match std::fs::read(&f)
+                        .map_err(|e| format!("{f}: {e}"))
+                        .and_then(|d| cdj::check::report(&f, &d))
+                    {
+                        Ok((r, problems)) => {
+                            println!("{r}");
+                            failed |= problems > 0;
+                        }
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            failed = true;
+                        }
+                    }
+                }
+                std::process::exit(failed as i32);
+            }
             "-V" | "--version" => {
                 println!("boothmate {}", env!("CARGO_PKG_VERSION"));
                 return;
@@ -83,7 +110,7 @@ fn main() {
         }
     }
     let dir = data_dir(dir);
-    if let Err(e) = run(dir, verbose) {
+    if let Err(e) = run(dir, verbose, replay) {
         eprintln!("error: {e}");
         // Keep the window open when started by double-click on Windows.
         if cfg!(windows) {
@@ -94,7 +121,7 @@ fn main() {
     }
 }
 
-fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
+fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), String> {
     log::init(&dir, verbose);
     log::info(&format!(
         "Boothmate {} - data folder {}",
@@ -123,6 +150,7 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
         changes: watch::channel(0).0,
         resync: Notify::new(),
         midi_test,
+        cdj_replay,
         osc_out,
     });
 

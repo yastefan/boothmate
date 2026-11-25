@@ -30,7 +30,7 @@ impl Kind {
     fn from_byte(b: u8) -> Self {
         match b {
             1 => Kind::Player,
-            3 => Kind::Mixer,
+            2 | 3 => Kind::Mixer,
             4 => Kind::Rekordbox,
             _ => Kind::Other,
         }

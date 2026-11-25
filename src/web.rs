@@ -29,6 +29,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/midi/mapping", post(edit_mapping))
         .route("/api/midi/test", post(test_midi))
         .route("/api/cdj/simulate", post(simulate_cdj))
+        .route("/api/cdj/record", post(record_cdj))
         .with_state(app)
 }
 
@@ -142,6 +143,12 @@ struct SimReq {
 /// Switches the DJ Link simulator (two fake players and a mixer) on or off.
 async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
     app.update(|st| st.cdj.simulator = r.on);
+    "ok"
+}
+
+/// Starts or stops recording DJ Link packets to logs/.
+async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
+    app.update(|st| st.cdj.record = r.on);
     "ok"
 }
 
