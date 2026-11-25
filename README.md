@@ -2,7 +2,7 @@
 
 A portable companion for grandMA3. Boothmate maps MIDI controllers to executors, sends feedback back to them, and reads the beat and song structure from Pioneer CDJs. It runs without installation from the same USB stick as your show files.
 
-> **Status:** early planning. Nothing works yet. See [docs/architecture.md](docs/architecture.md).
+> **Status:** milestone M1. Boothmate connects to grandMA3 and shows executors, cues and fader values live in a web page. MIDI and CDJ support come next. See [docs/architecture.md](docs/architecture.md).
 
 ## Why
 
@@ -17,27 +17,32 @@ Boothmate wants to solve both in one small, robust tool:
 - **Portable:** one binary per platform (macOS, Windows), all data in the folder next to it.
 - **Version-proof:** everything specific to a grandMA3 version lives in profile files you can update without a rebuild.
 
-## Usage (planned)
+## Usage
 
-1. Copy the `Boothmate` folder next to your show files on a USB stick.
-2. Import the Lua plugin from `lua/` into your grandMA3 show.
-3. Start `boothmate-mac` or `boothmate-win.exe` and open the web UI it prints.
-4. Pick your controller profile, press **Learn**, and map your controls.
+1. Download `Boothmate-mac.zip` or `Boothmate-win.zip` from the [build runs](https://github.com/yastefan/boothmate/actions/workflows/build.yml) or releases and unpack the `Boothmate` folder, for example next to your show files on a USB stick.
+2. In grandMA3, add an OSC line: destination `127.0.0.1`, port `9001`, UDP, **Send = Yes**, and switch on **Enable Output** (Menu > In & Out > OSC).
+3. Import the plugin from `lua/boothmate.xml` into your show and start it with `Plugin "boothmate"`.
+4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8080/>.
+
+On macOS, allow the unsigned binary once: right-click > Open, or `xattr -d com.apple.quarantine boothmate-mac`.
+
+Boothmate on another machine than grandMA3: point the OSC line at that machine, set `osc.listen = "0.0.0.0:9001"` and `plugin.host` (the console IP) and `plugin.token` in `boothmate.toml`, and start the plugin with `Plugin "boothmate" "bind=0.0.0.0 token=<same token>"`.
 
 ```
 Boothmate/
   boothmate-mac, boothmate-win.exe
-  boothmate.toml        global settings (network, console IP)
-  devices/              controller profiles
-  ma-profiles/          grandMA3 version profiles
+  boothmate.toml        settings, created on first start
+  ma-profiles/          grandMA3 version profiles (OSC addresses)
   lua/                  grandMA3 plugin
-  shows/<name>/         mappings and CDJ rules per show
+  logs/                 log of the last two runs
 ```
 
 ## Building
 
 ```sh
 cargo build --release
+cargo run -- --verbose            # uses ma-profiles/ in the current folder
+lua5.4 tools/fake-ma3.lua         # fake grandMA3 (needs LuaSocket + dkjson), no console needed
 ```
 
 ## Credits

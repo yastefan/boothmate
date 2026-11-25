@@ -1,0 +1,136 @@
+-- A fake grandMA3 for development without a console.
+--
+-- Runs lua/boothmate.lua against mocked grandMA3 objects and sends OSC output like onPC 2.5.1
+-- (addresses and arguments from docs/spikes/m0-feedback.md).
+--
+--   lua5.4 tools/fake-ma3.lua [seconds]      needs LuaSocket and dkjson (or another "json" module)
+--
+-- Timeline: cues run on sequences 1 and 2, fader 2 moves, sequence 3 is relabelled (hook), the
+-- page changes to 2 and back.
+
+local socket = require("socket")
+package.preload.json = package.preload.json or function()
+  local ok, m = pcall(require, "dkjson")
+  if ok then return m end
+  return require("cjson")
+end
+
+local duration = tonumber(arg and arg[1]) or 30
+local here = (arg and arg[0] or "tools/fake-ma3.lua"):match("^(.*)[/\\]") or "."
+
+-- Mock objects --------------------------------------------------------------------------------
+
+local hooks, nextHook = {}, 1
+local function fire(obj) for _, h in pairs(hooks) do if h.obj == obj then h.fn(obj, 11) end end end
+
+local function object(class, addr, props)
+  local o = props or {}
+  function o:GetClass() return class end
+  function o:Addr() return addr end
+  function o:Get(prop) return self[prop] end
+  return o
+end
+
+local appearances = {
+  object("Appearance", "14.6.1", { no = 1, name = "Red", BackRGBA = "FF0000FF" }),
+  object("Appearance", "14.6.2", { no = 2, name = "Blue", BackRGBA = "0040FFFF" }),
+}
+
+local function sequence(no, name, cues, app)
+  local s = object("Sequence", "14.14.1.7." .. no, { no = no, name = name, Appearance = app })
+  s.cues, s.current, s.fader = cues, nil, 100
+  function s:HasActivePlayback() return self.current ~= nil end
+  function s:GetFader() return self.fader end
+  function s:CurrentChild() if self.current then return { no = self.current * 1000, name = self.cues[self.current] } end end
+  return s
+end
+
+local seqs = {
+  sequence(1, "Warm Wash", { "Warm", "Amber" }, appearances[1]),
+  sequence(2, "MCP Test", { "Warm", "Rot", "Blau" }, appearances[2]),
+  sequence(3, "Strobe", { "Fast" }, nil),
+}
+local group = object("Group", "14.14.1.6.1", { no = 1, name = "Spots" })
+
+local pages = {
+  object("Page", "14.13.1.1", { no = 1, name = "Main" }),
+  object("Page", "14.13.1.2", { no = 2, name = "Effects" }),
+}
+local assign = { [1] = { [201] = seqs[1], [202] = seqs[2], [203] = seqs[3], [101] = group }, [2] = { [201] = seqs[3] } }
+local currentPage = 1
+
+GetExecutor = function(n)
+  local obj = assign[currentPage][n]
+  if obj then return { Object = obj }, pages[currentPage] end
+end
+CurrentExecPage = function() return pages[currentPage] end
+DataPool = function() return { Sequences = object("Pool", "14.14.1.7", {}) } end
+ShowData = function() return { Appearances = object("Pool", "14.6", {}) } end
+Version = function() return "2.5.1.1" end
+Printf = function(s) print(s) end
+Enums = { Roles = { Display = 1 } }
+HookObjectChange = function(fn, obj) local id = nextHook; nextHook = id + 1; hooks[id] = { fn = fn, obj = obj }; return id end
+Unhook = function(id) hooks[id] = nil end
+
+-- OSC output -----------------------------------------------------------------------------------
+
+local udp = socket.udp()
+udp:setpeername("127.0.0.1", 9001)
+
+local function pad(s) s = s .. "\0"; return s .. string.rep("\0", (4 - #s % 4) % 4) end
+local function osc(addr, ...)
+  local types, data = ",", {}
+  for _, a in ipairs({ ... }) do
+    if math.type(a) == "integer" then types = types .. "i"; data[#data + 1] = string.pack(">i4", a)
+    elseif type(a) == "number" then types = types .. "f"; data[#data + 1] = string.pack(">f", a)
+    else types = types .. "s"; data[#data + 1] = pad(a) end
+  end
+  udp:send(pad(addr) .. pad(types) .. table.concat(data))
+end
+
+local function go(s, cue)
+  s.current = cue
+  local text = s.name .. ";" .. cue .. " " .. s.cues[cue]
+  osc("/" .. s:Addr(), "Go+", 1, text)
+  return function() osc("/" .. s:Addr(), "Go+", 0, text) end
+end
+
+-- Run ------------------------------------------------------------------------------------------
+
+local chunk = assert(loadfile(here .. "/../lua/boothmate.lua"))
+local Main, Cleanup = chunk("boothmate", "boothmate", {}, { Parent = function() return "plugin" end })
+local co = coroutine.create(function() Main(nil, "") end)
+
+local t0 = socket.gettime()
+local events = {
+  { 1, function() return go(seqs[1], 1) end },
+  { 2, function() return go(seqs[2], 2) end },
+  { 3, function() osc("/14.13.2.1", "FaderMaster", 1, 80.0) end },
+  { 3.5, function() osc("/14.14.1.6.1", "FaderMaster", 1, 60.0) end },
+  { 4, function() seqs[3].name = "Strobe Hard"; fire(seqs[3]) end },
+  { 7, function() currentPage = 2 end },
+  { 9, function() currentPage = 1 end },
+  { 10, function() seqs[1].current = nil; osc("/14.14.1.7.1", "Off", 1, "Warm Wash") end },
+  { 11, function() osc("/14.14.1.7.2", "Pause", 2, "MCP Test") end },
+}
+local release = {}
+local fadeFrom, fadeTo = 5, 6.5
+
+while socket.gettime() - t0 < duration do
+  local t = socket.gettime() - t0
+  while events[1] and t >= events[1][1] do
+    local r = table.remove(events, 1)[2]()
+    if type(r) == "function" then release[#release + 1] = { t + 0.3, r } end
+  end
+  for i = #release, 1, -1 do if t >= release[i][1] then table.remove(release, i)[2]() end end
+  if t >= fadeFrom and t <= fadeTo then
+    seqs[2].fader = 100 - (t - fadeFrom) / (fadeTo - fadeFrom) * 100 * 0.6
+    osc("/14.14.1.7.2", "FaderMaster", 3, seqs[2].fader, seqs[2].name)
+  end
+  local ok, err = coroutine.resume(co)
+  if not ok then error(err) end
+  if coroutine.status(co) == "dead" then break end
+  socket.sleep(1 / 30)
+end
+Cleanup()
+print("fake-ma3: done")

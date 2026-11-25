@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boothmate</title>
+<style>
+  :root {
+    --bg: #111317; --panel: #1a1d23; --line: #2a2f38; --text: #e6e8eb; --muted: #8a93a0;
+    --ok: #3ccf7a; --warn: #f0b429; --bad: #ef5350; --accent: #4f9cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; letter-spacing: .02em; }
+  .status { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
+  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  main { padding: 16px; display: grid; gap: 20px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 118px; transition: border-color .1s; }
+  .tile.on { border-color: var(--ok); }
+  .tile.paused { border-color: var(--warn); }
+  .tile.pressed { box-shadow: inset 0 0 0 2px var(--text); }
+  .swatch { height: 6px; background: var(--line); }
+  .body { padding: 8px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .top { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cue { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 17px; }
+  .fader { margin-top: auto; height: 18px; background: #0c0d10; border-radius: 4px; position: relative; overflow: hidden; }
+  .fader i { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: .55; transition: width 40ms linear; }
+  .fader span { position: absolute; right: 6px; top: 0; font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); padding: 12px 0; }
+  .warnbox { background: #3a2e10; border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; }
+  details { color: var(--muted); }
+  code { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Boothmate</h1>
+  <div class="status"><span class="dot" id="osc-dot"></span><span id="osc-text">OSC</span></div>
+  <div class="status"><span class="dot" id="plugin-dot"></span><span id="plugin-text">Plugin</span></div>
+  <div class="status" id="page-text"></div>
+  <button id="resync" title="Ask the plugin to read the page again">Resync</button>
+</header>
+<main>
+  <div id="fallback" class="warnbox" hidden></div>
+  <section>
+    <h2 id="exec-title">Executors</h2>
+    <div class="grid" id="executors"></div>
+  </section>
+  <section>
+    <h2>Other sequences (seen via OSC)</h2>
+    <div class="grid" id="sequences"></div>
+  </section>
+  <section>
+    <h2>Masters</h2>
+    <div class="grid" id="masters"></div>
+  </section>
+  <details>
+    <summary>Unknown OSC addresses</summary>
+    <div id="unknown"></div>
+  </details>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let last = null;
+
+function fader(v) {
+  if (v == null) return "";
+  const p = Math.max(0, Math.min(100, v));
+  return `<div class="fader"><i style="width:${p}%"></i><span>${v.toFixed(1)}</span></div>`;
+}
+
+function tile({ top, right, name, cue, color, seq, value }) {
+  const cls = ["tile"];
+  if (seq) { if (seq.playback === "on") cls.push("on"); if (seq.playback === "paused") cls.push("paused"); if (seq.pressed) cls.push("pressed"); }
+  return `<div class="${cls.join(" ")}">
+    <div class="swatch" style="${color ? `background:${esc(color)}` : ""}"></div>
+    <div class="body">
+      <div class="top"><span>${esc(top)}</span><span>${esc(right)}</span></div>
+      <div class="name">${esc(name) || "&nbsp;"}</div>
+      <div class="cue">${esc(cue)}</div>
+      ${fader(value)}
+    </div></div>`;
+}
+
+function seqState(s) {
+  if (!s) return "";
+  return { on: "running", off: "off", paused: "paused" }[s.playback] || "";
+}
+
+function render(st) {
+  last = st;
+  const c = st.connections, now = Date.now();
+  const age = c.osc_last ? (now - c.osc_last) / 1000 : null;
+  $("osc-dot").className = "dot " + (age == null ? "warn" : "ok");
+  $("osc-text").textContent = `OSC ${c.osc_listen}: ` + (age == null ? "nothing received yet" : `${c.osc_packets} msgs, last ${age < 1 ? "now" : Math.round(age) + " s ago"}`);
+  $("plugin-dot").className = "dot " + (c.plugin_connected ? (c.profile_fallback ? "warn" : "ok") : "bad");
+  $("plugin-text").textContent = c.plugin_connected
+    ? `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`
+    : `Plugin ${c.plugin_addr}: ${c.plugin_error || "connecting"}`;
+  $("page-text").textContent = st.page != null ? `Page ${st.page}` : "";
+  $("fallback").hidden = !c.profile_fallback;
+  $("fallback").textContent = `No verified profile for grandMA3 ${c.ma_version}. Using ${c.profile} read-only. Add ma-profiles/<version>.toml.`;
+
+  const shown = new Set(), shownGroups = new Set();
+  const execs = st.executors.map(e => {
+    const seq = e.class === "Sequence" ? st.sequences[e.obj] : null;
+    if (seq) shown.add(String(e.obj));
+    const group = e.class === "Group" ? st.group_masters[e.obj] : undefined;
+    if (group !== undefined) shownGroups.add(String(e.obj));
+    const value = seq ? seq.faders.FaderMaster : (group ?? e.fader);
+    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : e.cue, color: e.color, seq, value });
+  });
+  $("exec-title").textContent = st.page != null ? `Executors on page ${st.page}` : "Executors";
+  $("executors").innerHTML = execs.join("") || `<div class="empty">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`;
+
+  const seqs = Object.entries(st.sequences).filter(([no]) => !shown.has(no)).map(([no, s]) =>
+    tile({ top: `Seq ${no}`, right: "", name: s.name, cue: [s.cue, seqState(s)].filter(Boolean).join(" · "), seq: s, value: s.faders.FaderMaster }));
+  $("sequences").innerHTML = seqs.join("") || `<div class="empty">None.</div>`;
+
+  const masters = [];
+  if (st.grand_master != null) masters.push(tile({ top: "Grand Master", right: "", name: "Grand", value: st.grand_master }));
+  for (const [no, v] of Object.entries(st.group_masters)) if (!shownGroups.has(no)) masters.push(tile({ top: `Group ${no}`, right: "", name: "Group master", value: v }));
+  $("masters").innerHTML = masters.join("") || `<div class="empty">None yet.</div>`;
+
+  const unk = Object.entries(c.osc_unknown);
+  $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
+}
+
+function connect() {
+  const es = new EventSource("/api/events");
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => {
+    $("osc-dot").className = $("plugin-dot").className = "dot bad";
+    $("plugin-text").textContent = "Boothmate not reachable";
+  };
+}
+setInterval(() => last && render(last), 1000);
+$("resync").onclick = () => fetch("/api/resync", { method: "POST" });
+connect();
+</script>
+</body>
+</html>
