@@ -220,6 +220,11 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
         name = control.name.clone();
         actions = mapping::on_input(st, &d.id, &control, generic, input, step);
         read_only = st.connections.profile_fallback;
+        if !read_only {
+            for a in &actions {
+                mapping::apply_local(st, a);
+            }
+        }
         if read_only && !actions.is_empty() {
             st.midi.error =
                 Some("grandMA3 version without verified profile: MIDI is read-only".into());

@@ -282,6 +282,52 @@ pub fn assign(st: &mut State, exec: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// grandMA3 does not echo values it receives over OSC input. Apply fader moves locally so that
+/// feedback (motor faders, LED rings, the web UI) keeps the new value.
+pub fn apply_local(st: &mut State, action: &Action) {
+    let (page, exec, set): (u32, u32, Box<dyn Fn(f32) -> f32>) = match *action {
+        Action::Fader { page, exec, value } => (page, exec, Box::new(move |_| value)),
+        Action::Encoder { page, exec, delta } => (
+            page,
+            exec,
+            Box::new(move |v: f32| (v + delta).clamp(0.0, 100.0)),
+        ),
+        Action::Key { .. } => return,
+    };
+    if st.page != Some(page) {
+        return;
+    }
+    let Some(e) = st.executors.iter_mut().find(|e| e.no == exec) else {
+        return;
+    };
+    let now = crate::state::now_ms();
+    if e.class == "Sequence" {
+        if let Some(s) = e.obj.and_then(|o| st.sequences.get_mut(&o)) {
+            let v = s
+                .faders
+                .get("FaderMaster")
+                .copied()
+                .or(e.fader)
+                .unwrap_or(0.0);
+            s.faders.insert("FaderMaster".into(), set(v));
+            s.updated = now;
+            return;
+        }
+    }
+    if let Some(m) = e.addr.as_ref().and_then(|a| st.masters.get_mut(a)) {
+        let v = m
+            .values
+            .get("FaderMaster")
+            .copied()
+            .or(e.fader)
+            .unwrap_or(0.0);
+        m.values.insert("FaderMaster".into(), set(v));
+        m.updated = now;
+        return;
+    }
+    e.fader = Some(set(e.fader.unwrap_or(0.0)));
+}
+
 pub fn target_name(m: &Mapping) -> String {
     match m.page {
         Some(p) => format!("Exec {p}.{}", m.exec),
@@ -669,6 +715,43 @@ mod tests {
         });
         let fb = feedback(&st, &m);
         assert_eq!((fb.level, fb.value), (Level::On, Some(40.0)));
+
+        // Own fader moves stick (grandMA3 does not echo OSC input).
+        apply_local(
+            &mut st,
+            &Action::Fader {
+                page: 1,
+                exec: 201,
+                value: 70.0,
+            },
+        );
+        assert_eq!(feedback(&st, &m).value, Some(70.0));
+        apply_local(
+            &mut st,
+            &Action::Encoder {
+                page: 1,
+                exec: 201,
+                delta: 40.0,
+            },
+        );
+        assert_eq!(feedback(&st, &m).value, Some(100.0));
+        apply_local(
+            &mut st,
+            &Action::Fader {
+                page: 2,
+                exec: 201,
+                value: 10.0,
+            },
+        );
+        assert_eq!(feedback(&st, &m).value, Some(100.0));
+        apply_local(
+            &mut st,
+            &Action::Fader {
+                page: 1,
+                exec: 201,
+                value: 40.0,
+            },
+        );
 
         // Fixed page 2 is not shown: dark.
         let fixed = Mapping {
