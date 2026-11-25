@@ -61,6 +61,22 @@
   .knob { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; cursor: ns-resize; touch-action: none; user-select: none; }
   .knob span { width: 38px; height: 38px; border-radius: 50%; background: var(--bg); display: grid; place-items: center; font-size: 11px; }
   .small { font-size: 11px; color: var(--muted); text-align: center; }
+  /* Executor bar laid out like grandMA3: sections of 5 columns x 4 rows, row 4xx on top, 1xx at the bottom. */
+  .wing { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 14px 22px; align-items: start; }
+  .block { max-width: 100%; overflow-x: auto; }
+  .blabel { font-size: 11px; color: var(--muted); margin: 0 0 4px 2px; font-variant-numeric: tabular-nums; }
+  .bgrid { display: grid; grid-template-columns: repeat(var(--cols, 5), minmax(80px, 1fr)); gap: 6px; }
+  .bgrid .tile { height: 106px; min-height: 0; }
+  .bgrid .cue { min-height: 0; }
+  .bgrid .body { padding: 6px 7px; }
+  .bgrid .name { font-size: 13px; }
+  .bgrid .top span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 6px; }
+  .bgrid .tile.row1 { height: 80px; }
+  .tile.slot { background: transparent; border-style: dashed; border-color: #23272e; }
+  .tile.slot .top { color: #4a515c; }
+  .tile.slot.pick { border-color: var(--accent); }
+  .knobval { margin-top: auto; height: 18px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .knobval b { width: 16px; height: 16px; border-radius: 50%; flex: none; }
 </style>
 </head>
 <body>
@@ -84,8 +100,11 @@
     <p class="muted" id="last-input"></p>
   </section>
   <section>
-    <h2 id="exec-title">Executors</h2>
-    <div class="grid" id="executors"></div>
+    <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
+      <h2 id="exec-title" style="margin: 0;">Executors</h2>
+      <label class="muted"><input type="checkbox" id="empty-rows" checked> show empty rows</label>
+    </div>
+    <div class="wing" id="executors"></div>
   </section>
   <section>
     <details id="tc-box" open>
@@ -124,8 +143,15 @@ function fader(v) {
   return `<div class="fader"><i style="width:${p}%"></i><span>${v.toFixed(1)}</span></div>`;
 }
 
-function tile({ top, right, name, cue, color, seq, value, exec, maps }) {
+function knob(v) {
+  if (v == null) return "";
+  const p = Math.max(0, Math.min(100, v));
+  return `<div class="knobval"><b style="background:conic-gradient(var(--accent) ${p * 3.6}deg, #0c0d10 0)"></b>${v.toFixed(1)}</div>`;
+}
+
+function tile({ top, right, name, cue, color, seq, value, exec, maps, row }) {
   const cls = ["tile"];
+  if (row) cls.push("row" + row);
   if (seq) { if (seq.playback === "on") cls.push("on"); if (seq.playback === "paused") cls.push("paused"); if (seq.pressed) cls.push("pressed"); }
   if (exec != null && picking()) cls.push("pick");
   const chips = (maps || []).map(m => `<span class="chip${m.page == null ? "" : " dim"}" title="${esc(m.device)}">${esc(m.control)}</span>`).join("");
@@ -136,8 +162,35 @@ function tile({ top, right, name, cue, color, seq, value, exec, maps }) {
       <div class="name">${esc(name) || "&nbsp;"}</div>
       <div class="cue">${esc(cue)}</div>
       ${chips ? `<div class="maps">${chips}</div>` : ""}
-      ${fader(value)}
+      ${row === 1 ? "" : row >= 3 ? knob(value) : fader(value)}
     </div></div>`;
+}
+
+// grandMA3 numbering: <row><column>, rows 1-4 (1xx keys only, 2xx fader, 3xx/4xx knob), columns in
+// sections of 5 (15 per wing, up to 90; 91-98 are the X keys).
+const ROWS = [4, 3, 2, 1];
+const shortClass = c => ({ Sequence: "Seq", Group: "Grp", Timecode: "TC", MasterSpeed: "Speed" }[c] || c || "");
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+function executorBar(tiles) {
+  // Always show the first wing (3 sections), plus every further section that holds an executor.
+  const sections = new Set([1, 2, 3]), rows = new Set();
+  for (const no of tiles.keys()) { rows.add(Math.floor(no / 100)); sections.add(Math.min(19, Math.ceil((no % 100) / 5))); }
+  const showRows = $("empty-rows").checked || !rows.size ? ROWS : ROWS.filter(r => rows.has(r));
+  return [...sections].sort((a, b) => a - b).map(b => {
+    // Section 19 stands for the X keys: 291-298 above 191-198.
+    const xkeys = b === 19, cols = xkeys ? range(91, 98) : range(b * 5 - 4, b * 5);
+    const label = xkeys ? "X keys" : `${cols[0]}\u2013${cols[4]}` + (b % 3 === 1 ? ` · wing ${(b + 2) / 3}` : "");
+    let cells = "";
+    for (const r of showRows) {
+      if (xkeys && r > 2) continue;
+      for (const c of cols) {
+        const no = r * 100 + c;
+        cells += tiles.get(no) || `<div class="tile slot row${r}${picking() ? " pick" : ""}" data-exec="${no}"><div class="body"><div class="top"><span>${no}</span></div></div></div>`;
+      }
+    }
+    return `<div class="block"${xkeys ? ` style="grid-column: 1 / -1; max-width: 780px"` : ""}><div class="blabel">${label}</div><div class="bgrid" style="--cols:${cols.length}">${cells}</div></div>`;
+  }).join("");
 }
 
 function seqState(s) {
@@ -161,17 +214,18 @@ function render(st) {
 
   const shown = new Set(), shownMasters = new Set();
   const masterValue = m => m ? (m.values.FaderMaster ?? Object.values(m.values)[0]) : undefined;
-  const execs = st.executors.map(e => {
+  const execs = new Map();
+  st.executors.forEach(e => {
     const seq = e.class === "Sequence" ? st.sequences[e.obj] : null;
     if (seq) shown.add(String(e.obj));
     const master = !seq && e.addr ? st.masters[e.addr] : undefined;
     if (master) shownMasters.add(e.addr);
     const value = seq ? seq.faders.FaderMaster : (masterValue(master) ?? e.fader);
     const maps = st.midi.mappings.filter(m => m.exec === e.no && (m.page == null || m.page === st.page));
-    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value, exec: e.no, maps });
+    execs.set(e.no, tile({ top: e.no, right: `${shortClass(e.class)} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value, exec: e.no, maps, row: Math.floor(e.no / 100) }));
   });
   $("exec-title").textContent = st.page != null ? `Executors on page ${st.page}` : "Executors";
-  setHtml($("executors"), execs.join("") || `<div class="empty">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`);
+  setHtml($("executors"), (execs.size ? "" : `<div class="empty" style="flex-basis: 100%">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`) + executorBar(execs));
 
   const seqs = Object.entries(st.sequences).filter(([no]) => !shown.has(no)).map(([no, s]) =>
     tile({ top: `Seq ${no}`, right: "", name: s.name, cue: [s.cue, seqState(s)].filter(Boolean).join(" · "), seq: s, value: s.faders.FaderMaster }));
@@ -301,6 +355,8 @@ $("maps").onchange = e => {
 $("maps").onclick = e => { const b = e.target.closest("[data-del]"); if (b) post("/api/midi/mapping", { index: +b.dataset.del, delete: true }); };
 buildTestController();
 setInterval(() => last && render(last), 1000);
+try { $("empty-rows").checked = localStorage.getItem("boothmate.emptyRows") !== "0"; } catch {}
+$("empty-rows").onchange = () => { try { localStorage.setItem("boothmate.emptyRows", $("empty-rows").checked ? "1" : "0"); } catch {} last && render(last); };
 $("resync").onclick = () => fetch("/api/resync", { method: "POST" });
 connect();
 </script>
