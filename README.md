@@ -39,6 +39,10 @@ Boothmate/
   logs/                 log of the last two runs
 ```
 
+## Trying a branch (macOS)
+
+`scripts/try.sh` downloads the CI build of `main`, a branch or a pull request and starts it, no Rust needed (only the gh CLI): `scripts/try.sh 2` runs pull request #2. Put your `boothmate.toml` in `~/Boothmate-try` to keep your settings.
+
 ## Building
 
 ```sh
