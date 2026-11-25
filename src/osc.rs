@@ -1,6 +1,7 @@
 //! OSC input from grandMA3 (OSC line with Send = Yes).
 
-use crate::profile::{Profile, Target};
+use crate::midi::mapping::Action;
+use crate::profile::{InputAddresses, Profile, Target};
 use crate::state::{now_ms, OscEvent};
 use crate::App;
 use rosc::{OscMessage, OscPacket, OscType};
@@ -54,6 +55,7 @@ pub async fn run(app: Arc<App>) {
                 match parse(&profile, &msg) {
                     Some(ev) => {
                         crate::log::debug(&format!("osc: {} {:?} -> {ev:?}", msg.addr, msg.args));
+                        crate::midi::mapping::learn_from_osc(st, &ev);
                         st.apply_osc(ev);
                     }
                     None => {
@@ -84,6 +86,46 @@ fn bind(listen: &str) -> std::io::Result<UdpSocket> {
     socket.bind(&addr.into())?;
     socket.set_nonblocking(true)?;
     UdpSocket::from_std(socket.into())
+}
+
+/// Sends a MIDI action to grandMA3 as OSC input.
+pub fn send_action(app: &App, action: &Action) {
+    let msg = {
+        let profile = app.profile.read().unwrap();
+        build(&profile.osc.input, &app.config.osc.prefix, action)
+    };
+    let bytes = match rosc::encoder::encode(&OscPacket::Message(msg)) {
+        Ok(b) => b,
+        Err(e) => {
+            crate::log::debug(&format!("osc: cannot encode: {e:?}"));
+            return;
+        }
+    };
+    if let Err(e) = app.osc_out.send_to(&bytes, &app.config.osc.send) {
+        crate::log::debug(&format!("osc: send to {} failed: {e}", app.config.osc.send));
+    }
+}
+
+pub fn build(input: &InputAddresses, prefix: &str, action: &Action) -> OscMessage {
+    let addr = |t: &str, page, exec| InputAddresses::address(t, prefix, page, exec);
+    match *action {
+        Action::Key {
+            page,
+            exec,
+            pressed,
+        } => OscMessage {
+            addr: addr(&input.key, page, exec),
+            args: vec![OscType::Int(pressed as i32)],
+        },
+        Action::Fader { page, exec, value } => OscMessage {
+            addr: addr(&input.fader, page, exec),
+            args: vec![OscType::Float(value / 100.0 * input.fader_range)],
+        },
+        Action::Encoder { page, exec, delta } => OscMessage {
+            addr: addr(&input.encoder, page, exec),
+            args: vec![OscType::Float(delta)],
+        },
+    }
 }
 
 fn flatten(p: OscPacket, out: &mut Vec<OscMessage>) {
@@ -246,6 +288,50 @@ mod tests {
         ));
         assert_eq!(parse(&p, &msg("/foo", vec![s("Go+")])), None);
         assert_eq!(parse(&p, &msg("/14.14.1.7.2", vec![])), None);
+    }
+
+    #[test]
+    fn builds_executor_input() {
+        let i = InputAddresses::default();
+        let m = build(
+            &i,
+            "",
+            &Action::Key {
+                page: 1,
+                exec: 201,
+                pressed: true,
+            },
+        );
+        assert_eq!(
+            (m.addr.as_str(), m.args),
+            ("/Page1/Key201", vec![OscType::Int(1)])
+        );
+        let m = build(
+            &i,
+            "gma3",
+            &Action::Fader {
+                page: 2,
+                exec: 202,
+                value: 50.0,
+            },
+        );
+        assert_eq!(
+            (m.addr.as_str(), m.args),
+            ("/gma3/Page2/Fader202", vec![OscType::Float(50.0)])
+        );
+        let m = build(
+            &i,
+            "",
+            &Action::Encoder {
+                page: 1,
+                exec: 203,
+                delta: -2.0,
+            },
+        );
+        assert_eq!(
+            (m.addr.as_str(), m.args),
+            ("/Page1/Encoder203", vec![OscType::Float(-2.0)])
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 A portable companion for grandMA3. Boothmate maps MIDI controllers to executors, sends feedback back to them, and reads the beat and song structure from Pioneer CDJs. It runs without installation from the same USB stick as your show files.
 
-> **Status:** milestone M1. Boothmate connects to grandMA3 and shows executors, cues and fader values live in a web page. MIDI and CDJ support come next. See [docs/architecture.md](docs/architecture.md).
+> **Status:** milestone M2. Boothmate connects to grandMA3, shows executors live in a web page, and maps MIDI controllers to executors with feedback. CDJ support comes next. See [docs/architecture.md](docs/architecture.md).
 
 ## Why
 
@@ -20,21 +20,33 @@ Boothmate wants to solve both in one small, robust tool:
 ## Usage
 
 1. Download `Boothmate-mac.zip` or `Boothmate-win.zip` from the [build runs](https://github.com/yastefan/boothmate/actions/workflows/build.yml) or releases and unpack the `Boothmate` folder, for example next to your show files on a USB stick.
-2. In grandMA3, add an OSC line: destination `127.0.0.1`, port `9001`, UDP, **Send = Yes**, and switch on **Enable Output** (Menu > In & Out > OSC).
+2. In grandMA3 (Menu > In & Out > OSC), add two OSC lines, both UDP with destination `127.0.0.1`, and switch on **Enable Output** and **Enable Input**:
+   - port `9001`, **Send = Yes** (feedback to Boothmate),
+   - port `8000`, **Receive = Yes** (keys and faders from Boothmate).
 3. Import the plugin from `lua/boothmate.xml` into your show and start it with `Plugin "boothmate"`.
 4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
+
+## MIDI controllers
+
+Plug in the controller, then press **Learn** in the web page, move a control, and click an executor (or press its key in grandMA3). Repeat for more controls, then stop learning. Buttons light up in the executor's appearance colour (bright = running, dim = assigned), motor faders and LED rings follow the fader. Mappings follow the current page unless you set a fixed page; they are saved in `midi.toml`.
+
+Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Use the test controller in the web page. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
+
+## Notes
 
 grandMA3 itself binds the OSC line's port. Boothmate shares it on `127.0.0.1` (address reuse); if it cannot, the web page shows the error and Boothmate keeps retrying. In that case switch Enable Output off, wait until Boothmate listens, and switch it on again.
 
 On macOS, allow the unsigned binary once: right-click > Open, or `xattr -d com.apple.quarantine boothmate-mac`.
 
-Boothmate on another machine than grandMA3: point the OSC line at that machine, set `osc.listen = "0.0.0.0:9001"` and `plugin.host` (the console IP) and `plugin.token` in `boothmate.toml`, and start the plugin with `Plugin "boothmate" "bind=0.0.0.0 token=<same token>"`.
+Boothmate on another machine than grandMA3: point the OSC lines at that machine, set `osc.send` to the console IP and port, set `osc.listen = "0.0.0.0:9001"` and `plugin.host` (the console IP) and `plugin.token` in `boothmate.toml`, and start the plugin with `Plugin "boothmate" "bind=0.0.0.0 token=<same token>"`.
 
 ```
 Boothmate/
   boothmate-mac, boothmate-win.exe
   boothmate.toml        settings, created on first start
+  midi.toml             MIDI mappings
   ma-profiles/          grandMA3 version profiles (OSC addresses)
+  devices/              MIDI controller profiles
   lua/                  grandMA3 plugin
   logs/                 log of the last two runs
 ```

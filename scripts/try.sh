@@ -6,7 +6,8 @@
 #   scripts/try.sh fix/foo    build of a branch
 #
 # Builds go to ~/Boothmate-try/<branch>/Boothmate. A boothmate.toml in ~/Boothmate-try is
-# copied into each build, so your settings stay the same. A running Boothmate is stopped first.
+# copied into each build, so your settings stay the same. MIDI mappings (midi.toml) are carried
+# over from the previous build to ~/Boothmate-try/midi.toml. A running Boothmate is stopped first.
 set -eu
 
 repo=yastefan/boothmate
@@ -29,6 +30,11 @@ fi
   || { echo "Build $run for $branch failed: gh run view $run -R $repo"; exit 1; }
 
 dir="$root/$branch"
+mkdir -p "$root"
+for old in "$root"/*/Boothmate/midi.toml "$root"/*/*/Boothmate/midi.toml; do
+  [ -f "$old" ] || continue
+  if [ ! -f "$root/midi.toml" ] || [ "$old" -nt "$root/midi.toml" ]; then cp -p "$old" "$root/midi.toml"; fi
+done
 old_lua=""
 [ -f "$dir/Boothmate/lua/boothmate.lua" ] && old_lua=$(cat "$dir/Boothmate/lua/boothmate.lua")
 rm -rf "$dir"
@@ -38,6 +44,7 @@ ditto -x -k "$dir/Boothmate-mac.zip" "$dir"
 rm "$dir/Boothmate-mac.zip"
 xattr -dr com.apple.quarantine "$dir/Boothmate" 2>/dev/null || true
 [ -f "$root/boothmate.toml" ] && cp "$root/boothmate.toml" "$dir/Boothmate/"
+[ -f "$root/midi.toml" ] && cp "$root/midi.toml" "$dir/Boothmate/"
 
 if [ -n "$old_lua" ] && [ "$old_lua" != "$(cat "$dir/Boothmate/lua/boothmate.lua")" ]; then
   echo "Note: the Lua plugin changed. Import $dir/Boothmate/lua/boothmate.xml into grandMA3 again."

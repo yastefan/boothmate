@@ -37,6 +37,30 @@
   .warnbox { background: #3a2e10; border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; }
   details { color: var(--muted); }
   code { color: var(--text); }
+  .tile.pick { cursor: pointer; border-style: dashed; border-color: var(--accent); }
+  .tile.pick:hover { background: #20283a; }
+  .maps { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+  .chip { font-size: 11px; background: #22324d; color: #bcd4ff; border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  .chip.dim { background: var(--line); color: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .bar label { display: flex; gap: 5px; align-items: center; color: var(--muted); }
+  button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .hint { background: #16243a; border: 1px solid #2b4570; border-radius: 8px; padding: 8px 12px; }
+  .muted { color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; padding: 2px 4px; }
+  .tc { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .strip { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .lcd { width: 64px; height: 20px; background: #0c1a12; color: #8ef0b0; font: 11px/20px ui-monospace, monospace; text-align: center; border-radius: 3px; overflow: hidden; white-space: nowrap; }
+  .pad { width: 48px; height: 36px; border-radius: 6px; border: 1px solid #000; background: #222; cursor: pointer; touch-action: none; }
+  .pad.down { outline: 2px solid var(--text); }
+  .fbox { width: 36px; height: 150px; position: relative; }
+  .fbox input { position: absolute; width: 150px; left: -57px; top: 65px; transform: rotate(-90deg); accent-color: var(--accent); touch-action: none; }
+  .knob { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; cursor: ns-resize; touch-action: none; user-select: none; }
+  .knob span { width: 38px; height: 38px; border-radius: 50%; background: var(--bg); display: grid; place-items: center; font-size: 11px; }
+  .small { font-size: 11px; color: var(--muted); text-align: center; }
 </style>
 </head>
 <body>
@@ -50,8 +74,29 @@
 <main>
   <div id="fallback" class="warnbox" hidden></div>
   <section>
+    <h2>MIDI</h2>
+    <div class="bar">
+      <button id="learn">Learn</button>
+      <label><input type="checkbox" id="follow" checked> new mappings follow the page</label>
+      <span id="devices" class="muted"></span>
+    </div>
+    <p id="learn-hint" class="hint" hidden></p>
+    <p class="muted" id="last-input"></p>
+  </section>
+  <section>
     <h2 id="exec-title">Executors</h2>
     <div class="grid" id="executors"></div>
+  </section>
+  <section>
+    <details id="tc-box" open>
+      <summary>Test controller (no hardware needed)</summary>
+      <p class="muted">Works like a real controller: learn its controls, then play. Buttons show the executor colour (bright = running), faders are motorised, drag the encoders up and down.</p>
+      <div class="tc" id="tc"></div>
+    </details>
+    <details id="maps-box">
+      <summary>Mappings</summary>
+      <table><thead><tr><th>Device</th><th>Control</th><th>Type</th><th>Executor</th><th>Page</th><th></th></tr></thead><tbody id="maps"></tbody></table>
+    </details>
   </section>
   <section>
     <h2>Other sequences (seen via OSC)</h2>
@@ -70,6 +115,8 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let last = null;
+// Only touch the DOM when the content changed, so clicks and open menus survive updates.
+const setHtml = (el, html) => { if (el._html !== html) { el._html = html; el.innerHTML = html; } };
 
 function fader(v) {
   if (v == null) return "";
@@ -77,15 +124,18 @@ function fader(v) {
   return `<div class="fader"><i style="width:${p}%"></i><span>${v.toFixed(1)}</span></div>`;
 }
 
-function tile({ top, right, name, cue, color, seq, value }) {
+function tile({ top, right, name, cue, color, seq, value, exec, maps }) {
   const cls = ["tile"];
   if (seq) { if (seq.playback === "on") cls.push("on"); if (seq.playback === "paused") cls.push("paused"); if (seq.pressed) cls.push("pressed"); }
-  return `<div class="${cls.join(" ")}">
+  if (exec != null && picking()) cls.push("pick");
+  const chips = (maps || []).map(m => `<span class="chip${m.page == null ? "" : " dim"}" title="${esc(m.device)}">${esc(m.control)}</span>`).join("");
+  return `<div class="${cls.join(" ")}"${exec != null ? ` data-exec="${exec}"` : ""}>
     <div class="swatch" style="${color ? `background:${esc(color)}` : ""}"></div>
     <div class="body">
       <div class="top"><span>${esc(top)}</span><span>${esc(right)}</span></div>
       <div class="name">${esc(name) || "&nbsp;"}</div>
       <div class="cue">${esc(cue)}</div>
+      ${chips ? `<div class="maps">${chips}</div>` : ""}
       ${fader(value)}
     </div></div>`;
 }
@@ -117,10 +167,11 @@ function render(st) {
     const master = !seq && e.addr ? st.masters[e.addr] : undefined;
     if (master) shownMasters.add(e.addr);
     const value = seq ? seq.faders.FaderMaster : (masterValue(master) ?? e.fader);
-    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value });
+    const maps = st.midi.mappings.filter(m => m.exec === e.no && (m.page == null || m.page === st.page));
+    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value, exec: e.no, maps });
   });
   $("exec-title").textContent = st.page != null ? `Executors on page ${st.page}` : "Executors";
-  $("executors").innerHTML = execs.join("") || `<div class="empty">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`;
+  setHtml($("executors"), execs.join("") || `<div class="empty">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`);
 
   const seqs = Object.entries(st.sequences).filter(([no]) => !shown.has(no)).map(([no, s]) =>
     tile({ top: `Seq ${no}`, right: "", name: s.name, cue: [s.cue, seqState(s)].filter(Boolean).join(" · "), seq: s, value: s.faders.FaderMaster }));
@@ -130,6 +181,8 @@ function render(st) {
   for (const [key, m] of Object.entries(st.masters)) if (!shownMasters.has(key))
     masters.push(tile({ top: key, right: "", name: m.label, cue: m.text, value: masterValue(m) }));
   $("masters").innerHTML = masters.join("") || `<div class="empty">None yet.</div>`;
+
+  renderMidi(st);
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -143,6 +196,110 @@ function connect() {
     $("plugin-text").textContent = "Boothmate not reachable";
   };
 }
+
+// MIDI ------------------------------------------------------------------------------------------
+const post = (url, body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  .then(async r => { if (!r.ok) alert(await r.text()); });
+const picking = () => last && last.midi.learn && last.midi.learn.control;
+const kinds = ["button", "fader", "encoder"];
+const rels = ["signed-bit", "twos-complement", "offset-64"];
+
+function renderMidi(st) {
+  const m = st.midi, l = m.learn;
+  $("learn").classList.toggle("active", !!l);
+  $("learn").textContent = l ? "Stop learning" : "Learn";
+  const devs = m.devices.filter(d => d.port !== "test");
+  $("devices").textContent = devs.length
+    ? "Controllers: " + devs.map(d => d.name + (d.profile ? "" : " (no profile)") + (d.output ? "" : " (no feedback port)")).join(", ")
+    : "No MIDI controller connected";
+  const hint = $("learn-hint");
+  hint.hidden = !l && !m.error;
+  if (l) {
+    const done = l.done ? `Mapped ${esc(l.done)}. ` : "";
+    hint.innerHTML = l.control
+      ? `${done}<b>${esc(l.control.control)}</b> (${esc(l.control.kind)}${l.control.guessed ? ", guessed" : ""}) on ${esc(deviceName(st, l.control.device))}: now click an executor below, or press its key or move its fader in grandMA3.`
+      : `${done}Move a control on your MIDI controller or on the test controller.`;
+  } else if (m.error) hint.textContent = m.error;
+  const li = m.last_input;
+  $("last-input").textContent = li ? `Last MIDI: ${deviceName(st, li.device)} · ${li.control || ""} · ${li.msg} = ${li.value}` : "";
+
+  setHtml($("maps"), m.mappings.map((x, i) => `<tr>
+    <td>${esc(deviceName(st, x.device))}</td><td>${esc(x.control)}</td>
+    <td><select data-i="${i}" data-f="kind">${kinds.map(k => `<option${k === x.kind ? " selected" : ""}>${k}</option>`).join("")}</select>
+      ${x.kind === "encoder" ? `<select data-i="${i}" data-f="relative">${rels.map(k => `<option${k === (x.relative || "signed-bit") ? " selected" : ""}>${k}</option>`).join("")}</select>` : ""}</td>
+    <td>${x.exec}</td>
+    <td><select data-i="${i}" data-f="page"><option value="follow"${x.page == null ? " selected" : ""}>follow</option>${x.page != null ? `<option selected>${x.page}</option>` : ""}${st.page != null && st.page !== x.page ? `<option>${st.page}</option>` : ""}</select></td>
+    <td><button data-del="${i}">Delete</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No mappings yet. Press Learn.</td></tr>`);
+  $("maps-box").querySelector("summary").textContent = `Mappings (${m.mappings.length})`;
+
+  const fb = m.feedback.test || {};
+  for (let i = 1; i <= 8; i++) {
+    const b = fb[`Button ${i}`] || {}, f = fb[`Fader ${i}`] || {};
+    const pad = $(`tc-b${i}`), lv = { on: 1, dim: .35, off: 0 }[b.level || "off"];
+    pad.style.background = lv ? (b.color || "#ffffff") : "#222";
+    pad.style.opacity = lv ? Math.max(lv, .35) : 1;
+    pad.style.filter = b.level === "dim" ? "brightness(.45)" : "";
+    $(`tc-l${i}`).textContent = b.text || f.text || "";
+    const inp = $(`tc-f${i}`);
+    if (!inp.dragging && f.value != null) inp.value = Math.round(f.value * 1.27);
+  }
+  for (let i = 1; i <= 4; i++) {
+    const e = fb[`Encoder ${i}`] || {}, v = e.value ?? 0;
+    $(`tc-e${i}`).style.background = `conic-gradient(from 225deg, var(--accent) ${v * 2.7}deg, var(--line) 0 270deg, transparent 0)`;
+    $(`tc-e${i}`).firstChild.textContent = e.value != null ? Math.round(v) : "";
+    $(`tc-el${i}`).textContent = e.text || `Encoder ${i}`;
+  }
+}
+
+function deviceName(st, id) {
+  const d = st.midi.devices.find(d => d.id === id);
+  return id === "test" ? "Test controller" : d ? d.name : id;
+}
+
+const send = bytes => post("/api/midi/test", { bytes });
+
+function buildTestController() {
+  let html = "";
+  for (let i = 1; i <= 8; i++) html += `<div class="strip"><div class="lcd" id="tc-l${i}"></div>
+    <div class="pad" id="tc-b${i}" title="Button ${i}"></div>
+    <div class="fbox"><input type="range" min="0" max="127" value="0" id="tc-f${i}" title="Fader ${i}"></div>
+    <div class="small">${i}</div></div>`;
+  for (let i = 1; i <= 4; i++) html += `<div class="strip"><div class="lcd" id="tc-el${i}"></div>
+    <div class="knob" id="tc-e${i}" title="Encoder ${i}: drag up/down or use the mouse wheel"><span></span></div><div class="small">Enc ${i}</div></div>`;
+  $("tc").innerHTML = html;
+  for (let i = 1; i <= 8; i++) {
+    const pad = $(`tc-b${i}`), n = i - 1;
+    const up = () => { if (pad.classList.contains("down")) { pad.classList.remove("down"); send([0x80, n, 0]); } };
+    pad.onpointerdown = e => { pad.setPointerCapture(e.pointerId); pad.classList.add("down"); send([0x90, n, 127]); };
+    pad.onpointerup = pad.onpointercancel = up;
+    const f = $(`tc-f${i}`);
+    f.onpointerdown = () => { f.dragging = true; send([0x90, 63 + i, 127]); };
+    f.onpointerup = f.onpointercancel = () => { f.dragging = false; send([0x90, 63 + i, 0]); };
+    f.oninput = () => send([0xb0, n, +f.value]);
+  }
+  for (let i = 1; i <= 4; i++) {
+    const k = $(`tc-e${i}`), cc = 15 + i;
+    const turn = d => { if (d) send([0xb0, cc, d > 0 ? Math.min(d, 15) : 64 + Math.min(-d, 15)]); };
+    k.onwheel = e => { e.preventDefault(); turn(e.deltaY < 0 ? 1 : -1); };
+    let y = null;
+    k.onpointerdown = e => { k.setPointerCapture(e.pointerId); y = e.clientY; };
+    k.onpointermove = e => { if (y == null) return; const d = Math.trunc((y - e.clientY) / 4); if (d) { turn(d); y -= d * 4; } };
+    k.onpointerup = k.onpointercancel = () => { y = null; };
+  }
+}
+
+$("learn").onclick = () => post("/api/midi/learn", { on: !(last && last.midi.learn), follow: $("follow").checked });
+$("executors").onclick = e => {
+  const t = e.target.closest("[data-exec]");
+  if (t && picking()) post("/api/midi/assign", { exec: +t.dataset.exec });
+};
+$("maps").onchange = e => {
+  const s = e.target, i = +s.dataset.i, f = s.dataset.f;
+  if (f === "page") post("/api/midi/mapping", s.value === "follow" ? { index: i, follow: true } : { index: i, page: +s.value });
+  else post("/api/midi/mapping", { index: i, [f]: s.value });
+};
+$("maps").onclick = e => { const b = e.target.closest("[data-del]"); if (b) post("/api/midi/mapping", { index: +b.dataset.del, delete: true }); };
+buildTestController();
 setInterval(() => last && render(last), 1000);
 $("resync").onclick = () => fetch("/api/resync", { method: "POST" });
 connect();

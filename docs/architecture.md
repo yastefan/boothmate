@@ -24,7 +24,7 @@ CDJs + mixer ----> CDJ module -----+      ^  <-> Lua plugin      --> grandMA3
 
 | Channel | Direction | Used for |
 | --- | --- | --- |
-| OSC | in | `/PageX/FaderY`, `/KeyY`, `/EncoderY` only. Never `/cmd`. |
+| OSC | in | `/PageX/FaderY`, `/PageX/KeyY`, `/PageX/EncoderY` only, on a second OSC line (Receive = Yes, own port: one line uses one port for both directions, and Boothmate already holds the output port on 127.0.0.1). Never `/cmd`. |
 | OSC (Send = Yes) | out, push | Key press/release with current cue, fader values (~30/s while moving) of sequences, groups and masters. Addressed by object (`/14.14.1.7.<seq>` in 2.5.1), not by executor |
 | Lua plugin | both | Executor assignment, appearance colours, names, page changes (via `HookObjectChange`), version, resync |
 
@@ -45,18 +45,23 @@ The plugin sends a page snapshot on connect, on `resync`, when a hooked object c
 
 ## MIDI module
 
-- MIDI learn: start learn, move a control (type detected: note, CC, 14-bit, relative), then pick an executor in the UI or press it in grandMA3.
-- Feedback per element type:
+- Ports via `midir` on a thread of their own; rescanned every 2 s (hot plug). Each input is paired with its output by name (Windows: `MIDIIN2 (X)` / `MIDIOUT2 (X)`) or by the profile's port pattern. macOS: a virtual port pair "Boothmate". Windows needs loopMIDI for virtual ports.
+- Device profiles `devices/<id>.toml`: control groups (button, fader, encoder, display) with note/CC/pitch bend addresses and a feedback type. Reference profiles: Akai APC mini mk2 (RGB pads by palette, brightness by channel) and Mackie Control (motor faders as pitch bend with touch notes, LED rings, scribble strips). A built-in test controller in the web UI uses the same path.
+- Devices without a profile: learned controls get mirrored feedback (LED 127/0, fader value). CC controls are guessed from the values while learning (absolute fader, 0/127 button, relative encoder) and can be changed in the mapping list.
+- MIDI learn: start learn, move a control, then click an executor in the UI or press its key / move its fader in grandMA3 (the OSC event is matched to the executor via the plugin's page snapshot). Learn stays on for the next control.
+- Mappings in `midi.toml`: device (profile id or port name), control, kind, MIDI address, executor, page (absent = follow the current page).
+- Feedback is computed from the state on every change and sent as a diff per control:
 
 | Element | From grandMA3 | Sent as |
 | --- | --- | --- |
-| RGB button | Appearance colour + running state | Nearest palette colour from the device profile; bright = active, dim = inactive, off = empty |
-| Motor fader | Fader value 0-100 | Pitch bend or CC (7/14 bit); locked while touched |
-| Endless encoder | Fader or encoder value | CC for the LED ring; input relative |
-| Display | Executor or cue name | SysEx per device profile |
+| RGB button | Appearance colour + running state | Nearest palette colour; bright = running, dim = assigned, off = empty |
+| LED button | Running state | Profile values for on / dim / off |
+| Motor fader | Fader value 0-100 | Pitch bend or CC; held while touched and 400 ms after the last move |
+| Endless encoder | Fader value | CC for the LED ring; input relative, sent as `/PageX/EncoderY` |
+| Display | Executor name | SysEx template per device profile |
 
-- Follow the current page or stay on a fixed page, per mapping. Full resync on page change, connect and console restart.
-- No feedback loops; feedback rate limited per element.
+- Only the current page is known (plugin snapshot). Mappings fixed to another page stay dark until that page is shown.
+- No plugin connection: buttons go dark, motor faders stay. Unknown grandMA3 version (fallback profile): MIDI does not send.
 
 ## CDJ module (read-only)
 
@@ -92,7 +97,7 @@ Known limits: metadata queries need a player number 1-4 that is actually in use 
 
 - **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
 - **M1 Core (done):** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
-- **M2 MIDI mapper:** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles.
+- **M2 MIDI mapper (in review):** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles, test controller in the web UI.
 - **M3 CDJ discovery and beat:** automatic discovery of CDJs and mixers, beat grid, test setup (emulator, replay, mock).
 - **M4 CDJ status:** silent virtual player, track change, master, on-air.
 - **M5 Metadata and timeline:** beat grid, waveform, phrases, "drop in N beats", timeline view.

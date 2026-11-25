@@ -9,6 +9,10 @@ pub const DEFAULT_CONFIG: &str = r#"# Boothmate settings. Restart Boothmate afte
 [osc]
 # Where grandMA3 sends its OSC output (OSC line with Send = Yes).
 listen = "127.0.0.1:9001"
+# Where Boothmate sends executor keys and faders: a second OSC line with Receive = Yes.
+send = "127.0.0.1:8000"
+# The OSC lines' Prefix in grandMA3, without slashes (empty = none).
+prefix = ""
 
 [plugin]
 # The Boothmate Lua plugin inside grandMA3. On a separate machine, set the console IP here
@@ -21,6 +25,12 @@ token = ""
 # grandMA3 profile from ma-profiles/. "auto" picks it from the version the plugin reports.
 profile = "auto"
 
+[midi]
+# macOS: offer a virtual MIDI port "Boothmate" for software controllers.
+virtual_port = true
+# MIDI ports to leave alone (parts of the name), e.g. ["IAC", "Network"].
+ignore = []
+
 [web]
 listen = "127.0.0.1:8088"
 "#;
@@ -31,13 +41,32 @@ pub struct Config {
     pub osc: Osc,
     pub plugin: Plugin,
     pub ma: Ma,
+    pub midi: Midi,
     pub web: Web,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Midi {
+    pub virtual_port: bool,
+    pub ignore: Vec<String>,
+}
+
+impl Default for Midi {
+    fn default() -> Self {
+        Self {
+            virtual_port: true,
+            ignore: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Osc {
     pub listen: String,
+    pub send: String,
+    pub prefix: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -64,6 +93,8 @@ impl Default for Osc {
     fn default() -> Self {
         Self {
             listen: "127.0.0.1:9001".into(),
+            send: "127.0.0.1:8000".into(),
+            prefix: String::new(),
         }
     }
 }
@@ -118,6 +149,8 @@ mod tests {
         assert_eq!(c.osc.listen, "127.0.0.1:9001");
         assert_eq!(c.plugin.port, 9002);
         assert_eq!(c.ma.profile, "auto");
+        assert_eq!(c.osc.send, "127.0.0.1:8000");
+        assert!(c.midi.virtual_port);
     }
 
     #[test]
