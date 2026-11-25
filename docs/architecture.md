@@ -30,6 +30,19 @@ CDJs + mixer ----> CDJ module -----+      ^  <-> Lua plugin      --> grandMA3
 
 M0 result: feedback works push-based. OSC carries playback state and fader values; `HookObjectChange` fires on labels, appearances and page changes, but not on playback or faders. Only the executor mapping and start state are read on connect. Details: [spikes/m0-feedback.md](spikes/m0-feedback.md).
 
+### Lua plugin protocol
+
+The plugin listens on TCP (default `127.0.0.1:9002`; `bind=0.0.0.0` only with a token). Boothmate connects and reconnects every 2 s. One JSON object per line:
+
+| Direction | Message |
+| --- | --- |
+| Boothmate -> plugin | `{"op":"hello","token":"..."}`, `{"op":"resync"}` |
+| plugin -> Boothmate | `{"ev":"hello","plugin":"0.1.0","ma":"2.5.1.1"}` |
+| plugin -> Boothmate | `{"ev":"page","page":1,"executors":[{"no":201,"class":"Sequence","obj":2,"name":"...","addr":"14.14.1.7.2","color":"#ff0000","active":true,"fader":100,"cue":"2 Rot"}]}` |
+| plugin -> Boothmate | `{"ev":"error","msg":"..."}` |
+
+The plugin sends a page snapshot on connect, on `resync`, when a hooked object changes (assigned objects, their appearances, the page, the Sequences and Appearances pools) and when `CurrentExecPage()` changes (compared every frame, a local call). At most 10 snapshots per second.
+
 ## MIDI module
 
 - MIDI learn: start learn, move a control (type detected: note, CC, 14-bit, relative), then pick an executor in the UI or press it in grandMA3.
@@ -78,7 +91,7 @@ Known limits: metadata queries need a player number 1-4 that is actually in use 
 ## Milestones
 
 - **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
-- **M1 Core:** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
+- **M1 Core (done):** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
 - **M2 MIDI mapper:** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles.
 - **M3 CDJ discovery and beat:** automatic discovery of CDJs and mixers, beat grid, test setup (emulator, replay, mock).
 - **M4 CDJ status:** silent virtual player, track change, master, on-air.

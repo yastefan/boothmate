@@ -1,3 +1,143 @@
+//! Boothmate: portable companion for grandMA3.
+
+mod config;
+mod log;
+mod osc;
+mod plugin;
+mod profile;
+mod state;
+mod web;
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
+use tokio::sync::{watch, Notify};
+
+pub struct App {
+    pub config: config::Config,
+    pub profiles: Vec<profile::Profile>,
+    pub profile: RwLock<profile::Profile>,
+    pub state: Mutex<state::State>,
+    /// Bumped on every state change; the web UI listens to it.
+    pub changes: watch::Sender<u64>,
+    /// Asks the plugin to send a fresh page snapshot.
+    pub resync: Notify,
+}
+
+impl App {
+    pub fn update(&self, f: impl FnOnce(&mut state::State)) {
+        f(&mut self.state.lock().unwrap());
+        self.changes.send_modify(|n| *n = n.wrapping_add(1));
+    }
+}
+
+const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose]
+
+Reads boothmate.toml, ma-profiles/ and lua/ from the data folder. The default data folder is
+the folder that holds the binary.";
+
+/// The data folder: `--dir`, else next to the binary. During development (`cargo run`) the
+/// binary sits in target/, so fall back to the current folder when it has `ma-profiles/`.
+fn data_dir(arg: Option<PathBuf>) -> PathBuf {
+    if let Some(d) = arg {
+        return d;
+    }
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    if let Some(d) = &exe_dir {
+        if d.join("ma-profiles").is_dir() {
+            return d.clone();
+        }
+    }
+    let cwd = std::env::current_dir().unwrap_or_default();
+    if cwd.join("ma-profiles").is_dir() {
+        return cwd;
+    }
+    exe_dir.unwrap_or(cwd)
+}
+
 fn main() {
-    println!("Boothmate {} - nothing to see yet.", env!("CARGO_PKG_VERSION"));
+    let mut dir = None;
+    let mut verbose = false;
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--dir" => dir = args.next().map(PathBuf::from),
+            "-v" | "--verbose" => verbose = true,
+            "-V" | "--version" => {
+                println!("boothmate {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            _ => {
+                println!("{USAGE}");
+                return;
+            }
+        }
+    }
+    let dir = data_dir(dir);
+    if let Err(e) = run(dir, verbose) {
+        eprintln!("error: {e}");
+        // Keep the window open when started by double-click on Windows.
+        if cfg!(windows) {
+            eprintln!("Press Enter to close.");
+            let _ = std::io::stdin().read_line(&mut String::new());
+        }
+        std::process::exit(1);
+    }
+}
+
+fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
+    log::init(&dir, verbose);
+    log::info(&format!(
+        "Boothmate {} - data folder {}",
+        env!("CARGO_PKG_VERSION"),
+        dir.display()
+    ));
+    let config = config::Config::load_or_create(&dir)?;
+    let profiles = profile::load_all(&dir.join("ma-profiles"))?;
+    let (start, _) = profile::select(&profiles, &config.ma.profile, None);
+    let start = start.clone();
+
+    let mut st = state::State::default();
+    st.connections.osc_listen = config.osc.listen.clone();
+    st.connections.plugin_addr = format!("{}:{}", config.plugin.host, config.plugin.port);
+    st.connections.profile = start.id.clone();
+
+    let app = Arc::new(App {
+        config,
+        profiles,
+        profile: RwLock::new(start),
+        state: Mutex::new(st),
+        changes: watch::channel(0).0,
+        resync: Notify::new(),
+    });
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async move {
+        let web = tokio::net::TcpListener::bind(&app.config.web.listen)
+            .await
+            .map_err(|e| format!("cannot start web UI on {}: {e}", app.config.web.listen))?;
+        let url = web_url(&app.config.web.listen);
+        log::info(&format!("Web UI: {url}"));
+        println!("\n  Boothmate is running. Open {url} in your browser. Ctrl+C to quit.\n");
+
+        tokio::spawn(osc::run(app.clone()));
+        tokio::spawn(plugin::run(app.clone()));
+        let server = axum::serve(web, web::router(app.clone()));
+        tokio::select! {
+            r = server => r.map_err(|e| format!("web UI: {e}")),
+            _ = tokio::signal::ctrl_c() => {
+                log::info("stopped");
+                Ok(())
+            }
+        }
+    })
+}
+
+fn web_url(listen: &str) -> String {
+    let local = listen.replace("0.0.0.0", "127.0.0.1");
+    format!("http://{local}/")
 }

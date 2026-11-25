@@ -5,11 +5,22 @@ edition = "2021"
 description = "Portable companion for grandMA3: MIDI controller mapping with feedback and read-only Pro DJ Link"
 license = "GPL-3.0-or-later"
 readme = "README.md"
+repository = "https://github.com/yastefan/boothmate"
 keywords = ["grandma3", "midi", "osc", "lighting", "prodjlink"]
 categories = ["multimedia"]
 
 [dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+rosc = "0.11"
+socket2 = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "net", "io-util", "macros", "sync", "time", "signal"] }
+tokio-stream = { version = "0.1", features = ["sync", "time"] }
+toml = "0.9"
 
 [profile.release]
 lto = true
 strip = true
+codegen-units = 1
+opt-level = "s"
