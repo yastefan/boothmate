@@ -503,6 +503,9 @@ fn handle(app: &App, p: Packet, src: Option<Ipv4Addr>, now: u64, simulated: bool
         app.changes.send_modify(|n| *n = n.wrapping_add(1));
     }
     log_events(&events);
+    if !quiet || !events.is_empty() {
+        let _ = app.cdj_events.send(Arc::new(events));
+    }
 }
 
 fn log_events(events: &[Event]) {

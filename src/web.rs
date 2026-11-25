@@ -30,6 +30,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/midi/test", post(test_midi))
         .route("/api/cdj/simulate", post(simulate_cdj))
         .route("/api/cdj/record", post(record_cdj))
+        .route("/api/tempo", post(set_tempo))
         .with_state(app)
 }
 
@@ -150,6 +151,24 @@ async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl Into
 async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
     app.update(|st| st.cdj.record = r.on);
     "ok"
+}
+
+/// Replaces the tempo rules and saves them to tempo.toml.
+async fn set_tempo(
+    Ax(app): Ax<Arc<App>>,
+    Json(rules): Json<crate::tempo::TempoFile>,
+) -> impl IntoResponse {
+    if let Err(e) = crate::tempo::save(&app.dir, &rules) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("cannot save tempo.toml: {e}"),
+        );
+    }
+    app.update(|st| {
+        st.tempo.rules = rules;
+        st.tempo.sent.clear();
+    });
+    (StatusCode::OK, "ok".to_string())
 }
 
 /// Sends the whole state on every change, at most 30 times a second.

@@ -92,6 +92,7 @@ pub struct State {
     pub masters: BTreeMap<String, Master>,
     pub midi: crate::midi::mapping::MidiState,
     pub cdj: crate::cdj::tracker::CdjState,
+    pub tempo: crate::tempo::TempoState,
 }
 
 /// A change parsed from one OSC message.
