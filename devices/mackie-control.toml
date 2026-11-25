@@ -1,0 +1,85 @@
+# Mackie Control (MCU) protocol: Behringer X-Touch / X-Touch Extender in MC mode, iCON, and many
+# other DAW controllers with motor faders. Set the controller to Mackie Control (MC) mode.
+name = "Mackie Control"
+ports = ["X-Touch", "MCU", "Mackie", "iCON", "Platform M"]
+encoder_step = 1.0
+
+[[controls]]
+name = "Fader {i}"
+kind = "fader"
+type = "pitchbend"
+channel = 1
+advance = "channel"
+count = 8
+feedback = "value"
+touch = 104               # touch notes 104-111
+
+[[controls]]
+name = "Master fader"
+kind = "fader"
+type = "pitchbend"
+channel = 9
+feedback = "value"
+touch = 112
+
+[[controls]]
+name = "Rec {i}"
+kind = "button"
+type = "note"
+number = 0
+count = 8
+feedback = "led"          # 127 on, 1 flashing, 0 off
+
+[[controls]]
+name = "Solo {i}"
+kind = "button"
+type = "note"
+number = 8
+count = 8
+feedback = "led"
+
+[[controls]]
+name = "Mute {i}"
+kind = "button"
+type = "note"
+number = 16
+count = 8
+feedback = "led"
+
+[[controls]]
+name = "Select {i}"
+kind = "button"
+type = "note"
+number = 24
+count = 8
+feedback = "led"
+
+[[controls]]
+name = "Encoder {i}"
+kind = "encoder"
+type = "cc"
+number = 16               # V-Pots, CC 16-23
+count = 8
+relative = "signed-bit"
+feedback = "ring"
+ring = 48                 # LED rings, CC 48-55: 0x20 + position 0-11 ("wrap" mode)
+ring_min = 32
+ring_max = 43
+
+[[controls]]
+name = "Encoder push {i}"
+kind = "button"
+type = "note"
+number = 32
+count = 8
+
+# Scribble strips: 7 characters per strip, upper line. Each shows the executor of its fader.
+[[controls]]
+name = "Display {i}"
+kind = "display"
+count = 8
+shows = "Fader {i}"
+sysex = "F0 00 00 66 14 12 {pos} {text} F7"
+pos = 0
+pos_step = 7
+len = 7

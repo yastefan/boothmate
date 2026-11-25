@@ -26,6 +26,47 @@ pub struct OscAddresses {
     /// Any other address with this prefix is shown as a master too (e.g. `/14.13.`).
     #[serde(default)]
     pub master_prefix: Option<String>,
+    /// Addresses grandMA3 receives for executors.
+    #[serde(default)]
+    pub input: InputAddresses,
+}
+
+/// OSC input to grandMA3. `{page}` and `{exec}` are replaced; the OSC line's prefix goes in front.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct InputAddresses {
+    /// Integer 1 = press, 0 = release.
+    pub key: String,
+    /// Float 0..`fader_range`.
+    pub fader: String,
+    /// Float: percent to move the fader, negative = down.
+    pub encoder: String,
+    pub fader_range: f32,
+}
+
+impl Default for InputAddresses {
+    fn default() -> Self {
+        Self {
+            key: "/Page{page}/Key{exec}".into(),
+            fader: "/Page{page}/Fader{exec}".into(),
+            encoder: "/Page{page}/Encoder{exec}".into(),
+            fader_range: 100.0,
+        }
+    }
+}
+
+impl InputAddresses {
+    pub fn address(template: &str, prefix: &str, page: u32, exec: u32) -> String {
+        let a = template
+            .replace("{page}", &page.to_string())
+            .replace("{exec}", &exec.to_string());
+        let prefix = prefix.trim_matches('/');
+        if prefix.is_empty() {
+            a
+        } else {
+            format!("/{prefix}{a}")
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -179,6 +220,7 @@ mod tests {
                     },
                 ],
                 master_prefix: Some("/14.13.".into()),
+                input: InputAddresses::default(),
             },
             id: id.into(),
         }
@@ -221,6 +263,16 @@ mod tests {
         assert_eq!(select(&ps, "auto", Some("2.50.0")), (&ps[1], Fit::Fallback));
         assert_eq!(select(&ps, "2.4", Some("2.5.1.1")).0.id, "2.4");
         assert_eq!(select(&ps, "auto", None).0.id, "2.5");
+    }
+
+    #[test]
+    fn input_addresses() {
+        let i = InputAddresses::default();
+        assert_eq!(InputAddresses::address(&i.key, "", 1, 201), "/Page1/Key201");
+        assert_eq!(
+            InputAddresses::address(&i.fader, "gma3", 2, 301),
+            "/gma3/Page2/Fader301"
+        );
     }
 
     #[test]

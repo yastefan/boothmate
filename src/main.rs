@@ -2,6 +2,7 @@
 
 mod config;
 mod log;
+mod midi;
 mod osc;
 mod plugin;
 mod profile;
@@ -13,6 +14,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{watch, Notify};
 
 pub struct App {
+    /// Data folder (next to the binary).
+    pub dir: PathBuf,
     pub config: config::Config,
     pub profiles: Vec<profile::Profile>,
     pub profile: RwLock<profile::Profile>,
@@ -21,6 +24,10 @@ pub struct App {
     pub changes: watch::Sender<u64>,
     /// Asks the plugin to send a fresh page snapshot.
     pub resync: Notify,
+    /// Messages from the test controller in the web UI.
+    pub midi_test: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Socket for OSC input to grandMA3 (executor keys and faders).
+    pub osc_out: std::net::UdpSocket,
 }
 
 impl App {
@@ -32,7 +39,7 @@ impl App {
 
 const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose]
 
-Reads boothmate.toml, ma-profiles/ and lua/ from the data folder. The default data folder is
+Reads boothmate.toml, midi.toml, ma-profiles/, devices/ and lua/ from the data folder. The default data folder is
 the folder that holds the binary.";
 
 /// The data folder: `--dir`, else next to the binary. During development (`cargo run`) the
@@ -103,13 +110,19 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
     st.connections.plugin_addr = format!("{}:{}", config.plugin.host, config.plugin.port);
     st.connections.profile = start.id.clone();
 
+    let osc_out = std::net::UdpSocket::bind("0.0.0.0:0")
+        .map_err(|e| format!("cannot open OSC output socket: {e}"))?;
+    let (midi_test, midi_test_rx) = tokio::sync::mpsc::unbounded_channel();
     let app = Arc::new(App {
+        dir: dir.clone(),
         config,
         profiles,
         profile: RwLock::new(start),
         state: Mutex::new(st),
         changes: watch::channel(0).0,
         resync: Notify::new(),
+        midi_test,
+        osc_out,
     });
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -126,6 +139,7 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
 
         tokio::spawn(osc::run(app.clone()));
         tokio::spawn(plugin::run(app.clone()));
+        tokio::spawn(midi::run(app.clone(), midi_test_rx));
         let server = axum::serve(web, web::router(app.clone()));
         tokio::select! {
             r = server => r.map_err(|e| format!("web UI: {e}")),

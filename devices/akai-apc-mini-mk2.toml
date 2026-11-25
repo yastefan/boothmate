@@ -1,0 +1,70 @@
+# Akai APC mini mk2, from Akai's "APC mini mk2 Communication Protocol" (not yet checked on hardware).
+# 64 RGB pads, 8 track and 8 scene buttons with one LED, 9 faders without motor.
+name = "Akai APC mini mk2"
+ports = ["APC mini mk2"]
+
+# Pad colours: velocity = palette index (the Novation-style 128 colour palette; bright tones and
+# pastels only). The note-on channel sets the brightness: 1 = 10% ... 7 = 100%.
+[palette]
+3 = "#ffffff"
+4 = "#ff4c4c"
+5 = "#ff0000"
+8 = "#ffbd6c"
+9 = "#ff5400"
+12 = "#ffff4c"
+13 = "#ffff00"
+16 = "#88ff4c"
+17 = "#54ff00"
+20 = "#4cff4c"
+21 = "#00ff00"
+25 = "#00ff19"
+29 = "#00ff55"
+33 = "#00ff99"
+36 = "#4cc3ff"
+37 = "#00a9ff"
+41 = "#0055ff"
+44 = "#4c4cff"
+45 = "#0000ff"
+48 = "#874cff"
+49 = "#5400ff"
+52 = "#ff4cff"
+53 = "#ff00ff"
+56 = "#ff4c87"
+57 = "#ff0054"
+
+[[controls]]
+name = "Pad {i}"          # Pad 1 is bottom left, Pad 64 top right
+kind = "button"
+type = "note"
+number = 0
+count = 64
+feedback = "rgb"
+bright_channel = 7        # 100 %
+dim_channel = 2           # 25 %
+
+[[controls]]
+name = "Track {i}"
+kind = "button"
+type = "note"
+number = 100
+count = 8
+feedback = "led"
+led_on = 1
+led_off = 0
+
+[[controls]]
+name = "Scene {i}"
+kind = "button"
+type = "note"
+number = 112
+count = 8
+feedback = "led"
+led_on = 1
+led_off = 0
+
+[[controls]]
+name = "Fader {i}"        # Fader 9 is the master fader
+kind = "fader"
+type = "cc"
+number = 48
+count = 9

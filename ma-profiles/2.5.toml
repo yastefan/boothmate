@@ -20,3 +20,11 @@ label = "Grand"
 [[osc.master]]
 address = "/14.13.3.{n}"
 label = "Speed {n}"
+
+# OSC input to grandMA3 (second OSC line, Receive = Yes). {page} and {exec} are replaced.
+# From the grandMA3 manual ("OSC" remote inputs); FaderRange on the OSC line must match.
+[osc.input]
+key = "/Page{page}/Key{exec}"         # int 1 = press, 0 = release
+fader = "/Page{page}/Fader{exec}"     # float 0 .. fader_range
+encoder = "/Page{page}/Encoder{exec}" # float, percent to move, negative = down
+fader_range = 100.0

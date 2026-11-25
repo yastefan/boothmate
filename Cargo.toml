@@ -18,6 +18,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt", "net", "io-util", "macros", "sync", "time", "signal"] }
 tokio-stream = { version = "0.1", features = ["sync", "time"] }
 toml = "0.9"
+midir = "0.10"
 
 [profile.release]
 lto = true
