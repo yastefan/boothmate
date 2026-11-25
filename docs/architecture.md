@@ -65,25 +65,33 @@ The plugin sends a page snapshot on connect, on `resync`, when a hooked object c
 
 ## CDJ module (read-only)
 
-Based on the [DJ Link Ecosystem Analysis](https://djl-analysis.deepsymmetry.org/).
+Based on the [DJ Link Ecosystem Analysis](https://djl-analysis.deepsymmetry.org/). Code in `src/cdj/`: `packet` (parse and build), `tracker` (device list, tempo, beat and bar position), `sim` (fake network), `mod` (sockets, virtual player).
 
 | Stage | What Boothmate does | What it gets |
 | --- | --- | --- |
-| 0 Discovery | Listens on UDP 50000 | All players and mixers (name, number, IP). Keep-alive ~2 s on CDJs |
-| 1 Beat | Listens on UDP 50001 | Per beat: BPM, pitch, beat in bar. CDJ-3000: position every 30 ms |
-| 2 Status | Announces itself as a silent virtual player | Status every ~200 ms on UDP 50002: playing, track ID, beat number, master, on-air |
-| 3 Metadata | Queries the loaded track only (TCP, port via 12523) | Title, beat grid, waveform, cues, phrases |
+| 0 Discovery | Listens on UDP 50000 | All players and mixers (name, number, IP). Keep-alive every 1.5-2 s; a device counts as gone after 5 s |
+| 1 Beat | Listens on UDP 50001 | Per beat: BPM, pitch, beat in bar. CDJ-3000: position every 30 ms. Mixer status |
+| 2 Status | Announces itself as a silent virtual player | Status every ~200 ms on UDP 50002: playing, track ID and slot, beat number, master, sync, on-air, beats to next cue |
+| 3 Metadata (M5) | Queries the loaded track only (TCP, port via 12523) | Title, beat grid, waveform, cues, phrases |
 
-Events to grandMA3: beat, downbeat, 4-bar and 32-beat grid, track change, master change, phrase change, "next phrase in N beats". Rules live in `shows/<name>/cdj.toml`.
+- Stages 0 and 1 are passive: Boothmate sends nothing.
+- Stage 2: Boothmate sends a keep-alive (name "Boothmate", type player) every 1.5 s by unicast to each device it has seen (never to Pioneer Stagehand, which crashes on it). It uses device number 7 by default (`cdj.player`, 7-15): outside the player numbers 1-6, so a full set of four or six players is no problem and no CDJ is pushed off its number. If a device defends the number, Boothmate takes the next free one. It sends nothing else: no status, no claims, no queries.
+- The network interface is the one the first device is seen on (its IP and MAC go into the keep-alive), or `cdj.interface`.
+- Bars: from the beat number and beat-in-bar of the status packet (the grid may start on any beat of a bar). Without status, bars are counted from the first downbeat Boothmate sees and marked as counted. 4-bar and 8-bar (32-beat) groups are counted from the start of the beat grid; real rekordbox phrases need the track metadata (M5).
+- Between status packets, each beat packet advances the beat number, so the bar position moves on the beat and not 200 ms later.
+- Tempo master: the player whose status has the master flag. Without status, the player that sends beats stands in.
+- The tracker emits events (device found/lost, master, track, play, beat with bar) for the log and, later, for grandMA3.
 
-Known limits: metadata queries need a player number 1-4 that is actually in use (CDJ-3000 allows 5-6). Phrases only exist for tracks analysed in rekordbox. Opus Quad, XDJ-AZ and Denon StageLinQ are out of scope for now. The virtual player does not work with rekordbox running on the same machine.
+Planned events to grandMA3: beat, downbeat, 4-bar and 32-beat grid, track change, master change, phrase change, "next phrase in N beats". Rules live in `shows/<name>/cdj.toml`.
+
+Known limits: metadata queries need a device number 1-6 inside the query (not the announced number). Phrases only exist for tracks analysed in rekordbox. Opus Quad, XDJ-AZ and Denon StageLinQ are out of scope for now. rekordbox on the same machine holds UDP 50002, so status is not available next to it (beats still are, where the OS shares the ports). Field offsets for the CDJ-3000 position packet and the mixer status come from the protocol analysis and are not verified on hardware yet.
 
 ## Testing without CDJs
 
 1. Replay of captured network traffic (pcap) for regression tests.
 2. [CDJ_DJM_Emulator](https://github.com/OllieCross/CDJ_DJM_Emulator) for daily development.
 3. [cdj3k-emu](https://github.com/nsaintot/cdj3k-emu) (real firmware in QEMU) as a final check.
-4. Built-in mock source for unit tests.
+4. Built-in simulator: the **Simulator** button in the web UI starts two fake players (a CDJ-2000NXS2 and a CDJ-3000) and a mixer. It builds real packets that go through the same parser; the scenario (play, cue, master handoff, pause) repeats every 64 s. Unit tests use it too, plus captured packets.
 
 ## Safety
 
@@ -97,9 +105,9 @@ Known limits: metadata queries need a player number 1-4 that is actually in use 
 
 - **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
 - **M1 Core (done):** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
-- **M2 MIDI mapper (in review):** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles, test controller in the web UI.
-- **M3 CDJ discovery and beat:** automatic discovery of CDJs and mixers, beat grid, test setup (emulator, replay, mock).
-- **M4 CDJ status:** silent virtual player, track change, master, on-air.
+- **M2 MIDI mapper (done):** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles, test controller in the web UI.
+- **M3 CDJ discovery, beat and status (in review):** automatic discovery of CDJs and mixers, BPM and beat in bar, CDJ-3000 position, silent virtual player for status (play state, track, beat number, master, on-air), bar and 4/8-bar counting, simulator, DJ Link in the web UI.
+- **M4 CDJ events to grandMA3:** beat, bar and phrase grid, track and master changes as grandMA3 actions.
 - **M5 Metadata and timeline:** beat grid, waveform, phrases, "drop in N beats", timeline view.
 
 ## Licensing notes

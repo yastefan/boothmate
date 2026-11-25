@@ -2,7 +2,7 @@
 
 A portable companion for grandMA3. Boothmate maps MIDI controllers to executors, sends feedback back to them, and reads the beat and song structure from Pioneer CDJs. It runs without installation from the same USB stick as your show files.
 
-> **Status:** milestone M2. Boothmate connects to grandMA3, shows executors live in a web page, and maps MIDI controllers to executors with feedback. CDJ support comes next. See [docs/architecture.md](docs/architecture.md).
+> **Status:** milestone M3. Boothmate connects to grandMA3, shows executors live in a web page, maps MIDI controllers to executors with feedback, and reads tempo, beats and bars from Pioneer CDJs. Sending CDJ events to grandMA3 comes next. See [docs/architecture.md](docs/architecture.md).
 
 ## Why
 
@@ -31,6 +31,12 @@ Boothmate wants to solve both in one small, robust tool:
 Plug in the controller, then press **Learn** in the web page, move a control, and click an executor (or press its key in grandMA3). Repeat for more controls, then stop learning. Buttons light up in the executor's appearance colour (bright = running, dim = assigned), motor faders and LED rings follow the fader. Mappings follow the current page unless you set a fixed page; they are saved in `midi.toml`.
 
 Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Use the test controller in the web page. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
+
+## CDJs (Pro DJ Link)
+
+Connect the computer to the DJ Link network (the switch, or a LAN port of the mixer). Boothmate finds players and mixers by itself and shows them in the web page: BPM, pitch, beat in bar, bar and 4/8-bar position, play state, tempo master, on-air and the loaded track. It only reads: it never browses media, loads tracks or controls a player.
+
+To get play state and beat numbers, Boothmate announces itself as a silent virtual player with device number 7 (`cdj.player` in `boothmate.toml`), so it never takes a player's number. Without this (`cdj.status = false`), it still reads BPM and beats. rekordbox on the same computer blocks the status port. No CDJs at hand? Press **Simulator** in the web page.
 
 ## Notes
 

@@ -1,5 +1,6 @@
 //! Boothmate: portable companion for grandMA3.
 
+mod cdj;
 mod config;
 mod log;
 mod midi;
@@ -140,6 +141,7 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
         tokio::spawn(osc::run(app.clone()));
         tokio::spawn(plugin::run(app.clone()));
         tokio::spawn(midi::run(app.clone(), midi_test_rx));
+        tokio::spawn(cdj::run(app.clone()));
         let server = axum::serve(web, web::router(app.clone()));
         tokio::select! {
             r = server => r.map_err(|e| format!("web UI: {e}")),

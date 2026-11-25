@@ -28,6 +28,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/midi/assign", post(assign))
         .route("/api/midi/mapping", post(edit_mapping))
         .route("/api/midi/test", post(test_midi))
+        .route("/api/cdj/simulate", post(simulate_cdj))
         .with_state(app)
 }
 
@@ -130,6 +131,17 @@ struct TestReq {
 /// A message from the test controller in the web UI.
 async fn test_midi(Ax(app): Ax<Arc<App>>, Json(r): Json<TestReq>) -> impl IntoResponse {
     let _ = app.midi_test.send(r.bytes);
+    "ok"
+}
+
+#[derive(Deserialize)]
+struct SimReq {
+    on: bool,
+}
+
+/// Switches the DJ Link simulator (two fake players and a mixer) on or off.
+async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
+    app.update(|st| st.cdj.simulator = r.on);
     "ok"
 }
 
