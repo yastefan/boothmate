@@ -91,6 +91,7 @@ pub struct State {
     /// Masters (group, grand, speed, ...) by object address, e.g. `14.13.3.1`.
     pub masters: BTreeMap<String, Master>,
     pub midi: crate::midi::mapping::MidiState,
+    pub cdj: crate::cdj::tracker::CdjState,
 }
 
 /// A change parsed from one OSC message.

@@ -77,6 +77,25 @@
   .tile.slot.pick { border-color: var(--accent); }
   .knobval { margin-top: auto; height: 18px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; }
   .knobval b { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+  /* DJ Link */
+  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 8px; }
+  .cdj { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .cdj.playing { border-color: var(--ok); }
+  .cdj.master { box-shadow: inset 0 0 0 1px var(--warn); border-color: var(--warn); }
+  .cdj .head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  .cdj .no { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cdj .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .cdj .bpm { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cdj .bpm small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .beats { display: flex; gap: 5px; }
+  .beats i { flex: 1; height: 10px; border-radius: 3px; background: var(--line); }
+  .beats i.on { background: var(--accent); animation: flash .25s ease-out; }
+  .beats i.on.down { background: var(--warn); }
+  @keyframes flash { from { filter: brightness(2); } }
+  .grid4 { display: flex; gap: 3px; } .grid4 i { flex: 1; height: 5px; border-radius: 2px; background: var(--line); } .grid4 i.on { background: #8a6cff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip.ok { background: #1d3a2a; color: #9ff0bf; } .chip.warn { background: #3a2e10; color: #ffd779; }
+  .prog { height: 4px; background: #0c0d10; border-radius: 2px; overflow: hidden; } .prog i { display: block; height: 100%; background: var(--accent); opacity: .6; }
 </style>
 </head>
 <body>
@@ -84,11 +103,20 @@
   <h1>Boothmate</h1>
   <div class="status"><span class="dot" id="osc-dot"></span><span id="osc-text">OSC</span></div>
   <div class="status"><span class="dot" id="plugin-dot"></span><span id="plugin-text">Plugin</span></div>
+  <div class="status"><span class="dot" id="cdj-dot"></span><span id="cdj-text">DJ Link</span></div>
   <div class="status" id="page-text"></div>
   <button id="resync" title="Ask the plugin to read the page again">Resync</button>
 </header>
 <main>
   <div id="fallback" class="warnbox" hidden></div>
+  <section>
+    <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
+      <h2 style="margin: 0;">DJ Link</h2>
+      <button id="cdj-sim" title="Two fake players and a mixer, to try this without CDJs">Simulator</button>
+    </div>
+    <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
+    <div class="players" id="cdj-players"></div>
+  </section>
   <section>
     <h2>MIDI</h2>
     <div class="bar">
@@ -237,6 +265,7 @@ function render(st) {
   $("masters").innerHTML = masters.join("") || `<div class="empty">None yet.</div>`;
 
   renderMidi(st);
+  renderCdj(st);
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -250,6 +279,60 @@ function connect() {
     $("plugin-text").textContent = "Boothmate not reachable";
   };
 }
+
+// DJ Link ---------------------------------------------------------------------------------------
+const kindName = { player: "Player", mixer: "Mixer", rekordbox: "rekordbox", other: "Device" };
+const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+function renderCdj(st) {
+  const c = st.cdj, devs = Object.values(c.devices);
+  $("cdj-sim").classList.toggle("active", c.simulator);
+  $("cdj-dot").className = "dot " + (!c.enabled || c.error ? "bad" : devs.length ? "ok" : "warn");
+  $("cdj-text").textContent = !c.enabled ? "DJ Link off" : c.error ? "DJ Link: port busy" : devs.length ? `DJ Link: ${devs.length} device${devs.length > 1 ? "s" : ""}` : "DJ Link: no devices";
+  const m = c.master != null ? c.devices[c.master] : null;
+  const info = [];
+  if (c.error) info.push(`Cannot listen: ${esc(c.error)}. Is rekordbox or another DJ Link program running on this computer?`);
+  else if (!c.enabled) info.push("Switched off in boothmate.toml (cdj.enabled).");
+  else if (!devs.length) info.push("Waiting for CDJs and mixers on the network. Connect this computer to the DJ Link switch or mixer, or try the simulator.");
+  if (m) info.push(`Tempo master: <b>${esc(m.name)} (${m.number})</b>${m.bpm != null ? ` · ${m.bpm.toFixed(2)} BPM` : ""}`);
+  if (c.interface) info.push(`Network: ${esc(c.interface)}`);
+  if (c.vcdj != null) info.push(`Status via virtual player ${c.vcdj}`);
+  if (c.status_note && devs.some(d => !d.simulated)) info.push(esc(c.status_note));
+  setHtml($("cdj-info"), info.join(" · "));
+  setHtml($("cdj-players"), devs.map(d => cdjCard(d, c.master)).join(""));
+}
+
+function cdjCard(d, master) {
+  const isMaster = master === d.number, cls = ["cdj"];
+  if (d.playing) cls.push("playing");
+  if (isMaster) cls.push("master");
+  const bb = d.beat_in_bar;
+  const beats = bb == null ? "" : `<div class="beats" title="Beat in bar">${[1, 2, 3, 4].map(i => `<i class="${i === bb ? "on" + (i === 1 ? " down" : "") : ""}"></i>`).join("")}</div>`;
+  const bars = d.bar_in_8 ? `<div class="grid4" title="Bar ${d.bar_in_8} of 8 (32-beat phrase grid, counted from the beat grid)">${range(1, 8).map(i => `<i class="${i <= d.bar_in_8 ? "on" : ""}"></i>`).join("")}</div>` : "";
+  const pos = [];
+  if (d.bar != null) pos.push(`Bar ${d.bar}${d.bar_counted ? " (counted)" : ""}`);
+  if (d.bar_in_4 != null) pos.push(`${d.bar_in_4}/4`);
+  if (d.beat != null) pos.push(`beat ${d.beat}`);
+  if (d.beats_to_cue != null) pos.push(`cue in ${d.beats_to_cue}`);
+  const chips = [];
+  if (isMaster) chips.push(`<span class="chip warn">Master</span>`);
+  if (d.play_state) chips.push(`<span class="chip${d.playing ? " ok" : " dim"}">${esc(d.play_state)}</span>`);
+  if (d.on_air) chips.push(`<span class="chip ok">On air</span>`);
+  if (d.sync) chips.push(`<span class="chip">Sync</span>`);
+  if (d.track) chips.push(`<span class="chip dim" title="rekordbox ID ${d.track.id}, from player ${d.track.player}">${esc(d.track.slot)} #${d.track.id}</span>`);
+  if (d.simulated) chips.push(`<span class="chip dim">simulated</span>`);
+  const prog = d.position_ms != null && d.track_len_s ? `<div class="prog" title="${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}"><i style="width:${Math.min(100, d.position_ms / d.track_len_s / 10).toFixed(1)}%"></i></div><div class="small" style="text-align:left">${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}</div>` : "";
+  const pitch = d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "";
+  return `<div class="${cls.join(" ")}">
+    <div class="head"><span class="no">${d.number}</span><span class="nm">${esc(d.name)} · ${kindName[d.kind] || "Player"}</span></div>
+    <div class="bpm">${d.bpm != null ? d.bpm.toFixed(2) : "&ndash;"}<small>BPM ${pitch}</small></div>
+    ${beats}${bars}
+    <div class="muted" style="font-size:12px; min-height:17px">${pos.join(" · ")}</div>
+    ${prog}
+    ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+  </div>`;
+}
+$("cdj-sim").onclick = () => post("/api/cdj/simulate", { on: !(last && last.cdj.simulator) });
 
 // MIDI ------------------------------------------------------------------------------------------
 const post = (url, body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })

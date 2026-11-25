@@ -31,6 +31,19 @@ virtual_port = true
 # MIDI ports to leave alone (parts of the name), e.g. ["IAC", "Network"].
 ignore = []
 
+[cdj]
+# Pioneer Pro DJ Link, read-only: finds CDJs and mixers on the network and reads tempo and beats.
+enabled = true
+# Network interface for DJ Link, by name ("en5", "Ethernet 2") or IP. Empty = the one the first
+# CDJ or mixer is seen on.
+interface = ""
+# Announce Boothmate as a silent virtual player, so players also send play state, track and beat
+# number. It never controls a player.
+status = true
+# Device number of that virtual player, 7-15: outside the player numbers, so it never takes a
+# CDJ's place.
+player = 7
+
 [web]
 listen = "127.0.0.1:8088"
 "#;
@@ -42,7 +55,28 @@ pub struct Config {
     pub plugin: Plugin,
     pub ma: Ma,
     pub midi: Midi,
+    pub cdj: Cdj,
     pub web: Web,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Cdj {
+    pub enabled: bool,
+    pub interface: String,
+    pub status: bool,
+    pub player: u8,
+}
+
+impl Default for Cdj {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interface: String::new(),
+            status: true,
+            player: 7,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -151,6 +185,8 @@ mod tests {
         assert_eq!(c.ma.profile, "auto");
         assert_eq!(c.osc.send, "127.0.0.1:8000");
         assert!(c.midi.virtual_port);
+        assert!(c.cdj.enabled && c.cdj.status);
+        assert_eq!(c.cdj.player, 7);
     }
 
     #[test]
