@@ -22,7 +22,9 @@ Boothmate wants to solve both in one small, robust tool:
 1. Download `Boothmate-mac.zip` or `Boothmate-win.zip` from the [build runs](https://github.com/yastefan/boothmate/actions/workflows/build.yml) or releases and unpack the `Boothmate` folder, for example next to your show files on a USB stick.
 2. In grandMA3, add an OSC line: destination `127.0.0.1`, port `9001`, UDP, **Send = Yes**, and switch on **Enable Output** (Menu > In & Out > OSC).
 3. Import the plugin from `lua/boothmate.xml` into your show and start it with `Plugin "boothmate"`.
-4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8080/>.
+4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
+
+grandMA3 itself binds the OSC line's port. Boothmate shares it on `127.0.0.1` (address reuse); if it cannot, the web page shows the error and Boothmate keeps retrying. In that case switch Enable Output off, wait until Boothmate listens, and switch it on again.
 
 On macOS, allow the unsigned binary once: right-click > Open, or `xattr -d com.apple.quarantine boothmate-mac`.
 

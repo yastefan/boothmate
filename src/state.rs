@@ -59,6 +59,7 @@ pub struct Executor {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Connections {
     pub osc_listen: String,
+    pub osc_error: Option<String>,
     pub osc_packets: u64,
     pub osc_last: Option<u64>,
     pub osc_unknown: BTreeMap<String, u64>,

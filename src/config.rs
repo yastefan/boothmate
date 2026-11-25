@@ -22,7 +22,7 @@ token = ""
 profile = "auto"
 
 [web]
-listen = "127.0.0.1:8080"
+listen = "127.0.0.1:8088"
 "#;
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -89,7 +89,7 @@ impl Default for Ma {
 impl Default for Web {
     fn default() -> Self {
         Self {
-            listen: "127.0.0.1:8080".into(),
+            listen: "127.0.0.1:8088".into(),
         }
     }
 }

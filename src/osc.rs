@@ -7,7 +7,26 @@ use rosc::{OscMessage, OscPacket, OscType};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 
-pub async fn run(app: Arc<App>, socket: UdpSocket) {
+pub async fn run(app: Arc<App>) {
+    let listen = app.config.osc.listen.clone();
+    let mut logged = false;
+    let socket = loop {
+        match bind(&listen) {
+            Ok(s) => break s,
+            Err(e) => {
+                if !logged {
+                    crate::log::warn(&format!(
+                        "OSC: cannot listen on {listen} ({e}); retrying every 2 s"
+                    ));
+                    logged = true;
+                }
+                app.update(|st| st.connections.osc_error = Some(format!("cannot listen: {e}")));
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    };
+    crate::log::info(&format!("OSC: listening on {listen}"));
+    app.update(|st| st.connections.osc_error = None);
     let mut buf = vec![0u8; 65536];
     loop {
         let (len, _peer) = match socket.recv_from(&mut buf).await {
@@ -48,6 +67,23 @@ pub async fn run(app: Arc<App>, socket: UdpSocket) {
             }
         });
     }
+}
+
+/// grandMA3 binds its OSC line's port itself (on all interfaces), also when it only sends.
+/// Address reuse lets Boothmate bind the same port on a specific address next to it, in either
+/// start order; the more specific binding receives the packets.
+fn bind(listen: &str) -> std::io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let addr: std::net::SocketAddr = listen
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{e}")))?;
+    let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_reuse_address(true)?;
+    #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
+    socket.set_reuse_port(true)?;
+    socket.bind(&addr.into())?;
+    socket.set_nonblocking(true)?;
+    UdpSocket::from_std(socket.into())
 }
 
 fn flatten(p: OscPacket, out: &mut Vec<OscMessage>) {

@@ -99,8 +99,8 @@ function render(st) {
   last = st;
   const c = st.connections, now = Date.now();
   const age = c.osc_last ? (now - c.osc_last) / 1000 : null;
-  $("osc-dot").className = "dot " + (age == null ? "warn" : "ok");
-  $("osc-text").textContent = `OSC ${c.osc_listen}: ` + (age == null ? "nothing received yet" : `${c.osc_packets} msgs, last ${age < 1 ? "now" : Math.round(age) + " s ago"}`);
+  $("osc-dot").className = "dot " + (c.osc_error ? "bad" : age == null ? "warn" : "ok");
+  $("osc-text").textContent = `OSC ${c.osc_listen}: ` + (c.osc_error ? c.osc_error : age == null ? "nothing received yet" : `${c.osc_packets} msgs, last ${age < 1 ? "now" : Math.round(age) + " s ago"}`);
   $("plugin-dot").className = "dot " + (c.plugin_connected ? (c.profile_fallback ? "warn" : "ok") : "bad");
   $("plugin-text").textContent = c.plugin_connected
     ? `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`

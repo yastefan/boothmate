@@ -117,10 +117,6 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     rt.block_on(async move {
-        let osc = tokio::net::UdpSocket::bind(&app.config.osc.listen)
-            .await
-            .map_err(|e| format!("cannot listen for OSC on {}: {e}", app.config.osc.listen))?;
-        log::info(&format!("OSC: listening on {}", app.config.osc.listen));
         let web = tokio::net::TcpListener::bind(&app.config.web.listen)
             .await
             .map_err(|e| format!("cannot start web UI on {}: {e}", app.config.web.listen))?;
@@ -128,7 +124,7 @@ fn run(dir: PathBuf, verbose: bool) -> Result<(), String> {
         log::info(&format!("Web UI: {url}"));
         println!("\n  Boothmate is running. Open {url} in your browser. Ctrl+C to quit.\n");
 
-        tokio::spawn(osc::run(app.clone(), osc));
+        tokio::spawn(osc::run(app.clone()));
         tokio::spawn(plugin::run(app.clone()));
         let server = axum::serve(web, web::router(app.clone()));
         tokio::select! {

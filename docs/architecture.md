@@ -91,7 +91,7 @@ Known limits: metadata queries need a player number 1-4 that is actually in use 
 ## Milestones
 
 - **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
-- **M1 Core:** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
+- **M1 Core (done):** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
 - **M2 MIDI mapper:** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles.
 - **M3 CDJ discovery and beat:** automatic discovery of CDJs and mixers, beat grid, test setup (emulator, replay, mock).
 - **M4 CDJ status:** silent virtual player, track change, master, on-air.
