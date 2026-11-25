@@ -109,14 +109,15 @@ function render(st) {
   $("fallback").hidden = !c.profile_fallback;
   $("fallback").textContent = `No verified profile for grandMA3 ${c.ma_version}. Using ${c.profile} read-only. Add ma-profiles/<version>.toml.`;
 
-  const shown = new Set(), shownGroups = new Set();
+  const shown = new Set(), shownMasters = new Set();
+  const masterValue = m => m ? (m.values.FaderMaster ?? Object.values(m.values)[0]) : undefined;
   const execs = st.executors.map(e => {
     const seq = e.class === "Sequence" ? st.sequences[e.obj] : null;
     if (seq) shown.add(String(e.obj));
-    const group = e.class === "Group" ? st.group_masters[e.obj] : undefined;
-    if (group !== undefined) shownGroups.add(String(e.obj));
-    const value = seq ? seq.faders.FaderMaster : (group ?? e.fader);
-    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : e.cue, color: e.color, seq, value });
+    const master = !seq && e.addr ? st.masters[e.addr] : undefined;
+    if (master) shownMasters.add(e.addr);
+    const value = seq ? seq.faders.FaderMaster : (masterValue(master) ?? e.fader);
+    return tile({ top: e.no, right: `${e.class} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value });
   });
   $("exec-title").textContent = st.page != null ? `Executors on page ${st.page}` : "Executors";
   $("executors").innerHTML = execs.join("") || `<div class="empty">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`;
@@ -126,8 +127,8 @@ function render(st) {
   $("sequences").innerHTML = seqs.join("") || `<div class="empty">None.</div>`;
 
   const masters = [];
-  if (st.grand_master != null) masters.push(tile({ top: "Grand Master", right: "", name: "Grand", value: st.grand_master }));
-  for (const [no, v] of Object.entries(st.group_masters)) if (!shownGroups.has(no)) masters.push(tile({ top: `Group ${no}`, right: "", name: "Group master", value: v }));
+  for (const [key, m] of Object.entries(st.masters)) if (!shownMasters.has(key))
+    masters.push(tile({ top: key, right: "", name: m.label, cue: m.text, value: masterValue(m) }));
   $("masters").innerHTML = masters.join("") || `<div class="empty">None yet.</div>`;
 
   const unk = Object.entries(c.osc_unknown);

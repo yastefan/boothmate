@@ -51,12 +51,13 @@ local seqs = {
   sequence(3, "Strobe", { "Fast" }, nil),
 }
 local group = object("Group", "14.14.1.6.1", { no = 1, name = "Spots" })
+local speed = object("Master", "14.13.3.1", { no = 1, name = "Speed1" })
 
 local pages = {
   object("Page", "14.13.1.1", { no = 1, name = "Main" }),
   object("Page", "14.13.1.2", { no = 2, name = "Effects" }),
 }
-local assign = { [1] = { [201] = seqs[1], [202] = seqs[2], [203] = seqs[3], [101] = group }, [2] = { [201] = seqs[3] } }
+local assign = { [1] = { [201] = seqs[1], [202] = seqs[2], [203] = seqs[3], [101] = group, [102] = speed }, [2] = { [201] = seqs[3] } }
 local currentPage = 1
 
 GetExecutor = function(n)
@@ -107,6 +108,7 @@ local events = {
   { 2, function() return go(seqs[2], 2) end },
   { 3, function() osc("/14.13.2.1", "FaderMaster", 1, 80.0) end },
   { 3.5, function() osc("/14.14.1.6.1", "FaderMaster", 1, 60.0) end },
+  { 3.8, function() osc("/14.13.3.1", "FaderMaster", 3, 50.0) end },
   { 4, function() seqs[3].name = "Strobe Hard"; fire(seqs[3]) end },
   { 7, function() currentPage = 2 end },
   { 9, function() currentPage = 1 end },

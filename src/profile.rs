@@ -20,16 +20,30 @@ pub struct Profile {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct OscAddresses {
     pub sequence: String,
-    pub group_master: String,
-    pub grand_master: String,
+    /// Known masters (group, grand, speed, ...), checked in order.
+    #[serde(default)]
+    pub master: Vec<MasterAddress>,
+    /// Any other address with this prefix is shown as a master too (e.g. `/14.13.`).
+    #[serde(default)]
+    pub master_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MasterAddress {
+    pub address: String,
+    /// Display name; `{n}` is replaced with the number.
+    pub label: String,
 }
 
 /// What an OSC address refers to, according to a profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
     Sequence(u32),
-    GroupMaster(u32),
-    GrandMaster,
+    /// `key` is the object address without the leading `/` (`14.13.3.1`), as the plugin reports it.
+    Master {
+        key: String,
+        label: String,
+    },
 }
 
 /// The profile picked for a grandMA3 version.
@@ -43,13 +57,24 @@ pub enum Fit {
 
 impl Profile {
     pub fn target(&self, addr: &str) -> Option<Target> {
-        if addr == self.osc.grand_master {
-            return Some(Target::GrandMaster);
-        }
         if let Some(n) = match_template(&self.osc.sequence, addr) {
             return Some(Target::Sequence(n));
         }
-        match_template(&self.osc.group_master, addr).map(Target::GroupMaster)
+        let key = addr.trim_start_matches('/').to_string();
+        for m in &self.osc.master {
+            if let Some(n) = match_template(&m.address, addr) {
+                let label = m.label.replace("{n}", &n.to_string());
+                return Some(Target::Master { key, label });
+            }
+        }
+        let rest = addr.strip_prefix(self.osc.master_prefix.as_deref()?)?;
+        if rest.is_empty() || !rest.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            return None;
+        }
+        Some(Target::Master {
+            key,
+            label: format!("Master {rest}"),
+        })
     }
 
     /// The OSC address grandMA3 uses for an object address such as `14.14.1.7.2`.
@@ -143,8 +168,17 @@ mod tests {
             versions: versions.iter().map(|s| s.to_string()).collect(),
             osc: OscAddresses {
                 sequence: "/14.14.1.7.{n}".into(),
-                group_master: "/14.14.1.6.{n}".into(),
-                grand_master: "/14.13.2.1".into(),
+                master: vec![
+                    MasterAddress {
+                        address: "/14.14.1.6.{n}".into(),
+                        label: "Group {n}".into(),
+                    },
+                    MasterAddress {
+                        address: "/14.13.3.{n}".into(),
+                        label: "Speed {n}".into(),
+                    },
+                ],
+                master_prefix: Some("/14.13.".into()),
             },
             id: id.into(),
         }
@@ -155,8 +189,16 @@ mod tests {
         let p = profile("2.5", &["2.5"]);
         assert_eq!(p.target("/14.14.1.7.2"), Some(Target::Sequence(2)));
         assert_eq!(p.target("/14.14.1.7.10"), Some(Target::Sequence(10)));
-        assert_eq!(p.target("/14.14.1.6.1"), Some(Target::GroupMaster(1)));
-        assert_eq!(p.target("/14.13.2.1"), Some(Target::GrandMaster));
+        let m = |k: &str, l: &str| {
+            Some(Target::Master {
+                key: k.into(),
+                label: l.into(),
+            })
+        };
+        assert_eq!(p.target("/14.14.1.6.1"), m("14.14.1.6.1", "Group 1"));
+        assert_eq!(p.target("/14.13.3.1"), m("14.13.3.1", "Speed 1"));
+        assert_eq!(p.target("/14.13.2.1"), m("14.13.2.1", "Master 2.1"));
+        assert_eq!(p.target("/14.13.x"), None);
         assert_eq!(p.target("/14.14.1.7."), None);
         assert_eq!(p.target("/14.14.1.7.2.1"), None);
         assert_eq!(p.target("/Page1/Fader201"), None);

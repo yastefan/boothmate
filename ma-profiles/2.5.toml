@@ -2,9 +2,21 @@
 name = "grandMA3 2.5"
 versions = ["2.5"]
 
-# OSC output addresses (OSC line with Send = Yes). {n} is the pool number.
+# OSC output addresses (OSC line with Send = Yes). {n} is the pool or master number.
 # They name the object, not the executor; the manual's /13.13.1.6.X is outdated.
 [osc]
 sequence = "/14.14.1.7.{n}"
-group_master = "/14.14.1.6.{n}"
-grand_master = "/14.13.2.1"
+# Any other /14.13.<category>.<n> (ShowData.Masters) is shown as "Master <category>.<n>".
+master_prefix = "/14.13."
+
+[[osc.master]]
+address = "/14.14.1.6.{n}"
+label = "Group {n}"
+
+[[osc.master]]
+address = "/14.13.2.{n}"
+label = "Grand"
+
+[[osc.master]]
+address = "/14.13.3.{n}"
+label = "Speed {n}"
