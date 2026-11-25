@@ -6,7 +6,10 @@
 //! status (UDP 50002). Boothmate never sends anything else: no media browsing, no track loading,
 //! no player control.
 
+pub mod check;
 pub mod packet;
+pub mod pcap;
+pub mod replay;
 pub mod sim;
 pub mod tracker;
 
@@ -125,6 +128,15 @@ pub async fn run(app: Arc<App>) {
     let mut iface: Option<Iface> = None;
     let mut vcdj: Option<u8> = None;
     let mut sim: Option<sim::Sim> = None;
+    let mut replay = app
+        .cdj_replay
+        .as_ref()
+        .and_then(|p| load_replay(p, now_ms()));
+    if let Some(r) = &replay {
+        let name = r.name.clone();
+        app.update(|st| st.cdj.replay = Some(name));
+    }
+    let mut rec: Option<Recorder> = None;
     let mut next_bind = 0u64;
     let mut next_keep_alive = 0u64;
     let mut next_house = 0u64;
@@ -159,6 +171,7 @@ pub async fn run(app: Arc<App>) {
             r = recv(&net.status, &mut b2) => match r { Ok((n, a)) => (STATUS_PORT, n, a), Err(_) => continue },
             _ = tick.tick() => (0, 0, SocketAddr::from(([0, 0, 0, 0], 0))),
         };
+        let src_addr_port = src.port();
         let now = now_ms();
 
         if port != 0 {
@@ -167,12 +180,19 @@ pub async fn run(app: Arc<App>) {
                 BEAT_PORT => &b1[..len],
                 _ => &b2[..len],
             };
-            let Some(p) = packet::parse(port, buf) else {
-                continue;
-            };
             let src = match src {
                 SocketAddr::V4(a) => Some(*a.ip()),
                 _ => None,
+            };
+            if let Some(r) = &mut rec {
+                let (sp, dst) = (
+                    src_addr_port,
+                    iface.as_ref().map_or(Ipv4Addr::BROADCAST, |i| i.ip),
+                );
+                r.write(src.unwrap_or(Ipv4Addr::UNSPECIFIED), sp, dst, port, buf);
+            }
+            let Some(p) = packet::parse(port, buf) else {
+                continue;
             };
             if let Packet::Conflict { number } = p {
                 if Some(number) == vcdj {
@@ -208,11 +228,65 @@ pub async fn run(app: Arc<App>) {
                 }
             }
         }
+        if let Some(r) = &mut replay {
+            let rounds = r.rounds;
+            let due: Vec<(u16, Ipv4Addr, Vec<u8>)> = r
+                .tick(now)
+                .into_iter()
+                .map(|d| (d.dst_port, d.src, d.payload.clone()))
+                .collect();
+            if r.rounds != rounds {
+                app.update(|st| st.cdj.clear_simulated());
+            }
+            for (port, src, bytes) in due {
+                if let Some(p) = packet::parse(port, &bytes) {
+                    handle(&app, p, Some(src), now, true);
+                }
+            }
+        }
+
+        // Recording.
+        let want_rec = app.state.lock().unwrap().cdj.record;
+        match (&rec, want_rec) {
+            (None, true) => match Recorder::start(&app.dir) {
+                Ok(r) => {
+                    crate::log::info(&format!("DJ Link: recording to {}", r.path));
+                    let path = r.path.clone();
+                    rec = Some(r);
+                    app.update(|st| st.cdj.recording = Some(path));
+                }
+                Err(e) => {
+                    crate::log::warn(&format!("DJ Link: cannot record: {e}"));
+                    app.update(|st| {
+                        st.cdj.record = false;
+                        st.cdj.error = Some(format!("cannot record: {e}"));
+                    });
+                }
+            },
+            (Some(_), false) => {
+                if let Some(mut r) = rec.take() {
+                    r.finish();
+                    crate::log::info(&format!(
+                        "DJ Link: recorded {} packets to {}",
+                        r.count, r.path
+                    ));
+                }
+                app.update(|st| st.cdj.recording = None);
+            }
+            _ => {}
+        }
 
         if now < next_house {
             continue;
         }
         next_house = now + 500;
+        if let Some(r) = &mut rec {
+            r.flush();
+            let n = r.count;
+            if app.state.lock().unwrap().cdj.recorded != n {
+                app.update(|st| st.cdj.recorded = n);
+            }
+        }
         let events = {
             let mut st = app.state.lock().unwrap();
             st.cdj.prune(now)
@@ -309,8 +383,116 @@ pub async fn run(app: Arc<App>) {
         let ka = packet::keep_alive(VCDJ_NAME, n, Kind::Player, i.mac, i.ip);
         for t in targets {
             let _ = sock.send_to(&ka, (t, ANNOUNCE_PORT)).await;
+            if let Some(r) = &mut rec {
+                r.write(i.ip, ANNOUNCE_PORT, t, ANNOUNCE_PORT, &ka);
+            }
         }
     }
+}
+
+fn load_replay(path: &std::path::Path, now: u64) -> Option<replay::Replay> {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    match std::fs::read(path)
+        .map_err(|e| e.to_string())
+        .and_then(|d| pcap::read(&d).map_err(|e| e.to_string()))
+    {
+        Ok(all) => {
+            let r = replay::Replay::new(name, check::djlink(all), now);
+            crate::log::info(&format!(
+                "DJ Link: replaying {} ({} packets, loops)",
+                path.display(),
+                r.len()
+            ));
+            Some(r)
+        }
+        Err(e) => {
+            crate::log::warn(&format!("DJ Link: cannot replay {}: {e}", path.display()));
+            None
+        }
+    }
+}
+
+/// Writes received DJ Link packets to `logs/djlink-<time>.pcap` (open it in Wireshark, or
+/// replay it with `boothmate --replay`).
+struct Recorder {
+    w: pcap::Writer<std::io::BufWriter<std::fs::File>>,
+    path: String,
+    count: u64,
+    failed: bool,
+}
+
+impl Recorder {
+    fn start(dir: &std::path::Path) -> std::io::Result<Self> {
+        let logs = dir.join("logs");
+        std::fs::create_dir_all(&logs)?;
+        let secs = now_ms() / 1000;
+        let (d, t) = (secs / 86_400, secs % 86_400);
+        let (y, m, day) = civil(d as i64);
+        let name = format!(
+            "djlink-{y:04}{m:02}{day:02}-{:02}{:02}{:02}.pcap",
+            t / 3600,
+            t / 60 % 60,
+            t % 60
+        );
+        let path = logs.join(name);
+        let f = std::fs::File::create(&path)?;
+        Ok(Recorder {
+            w: pcap::Writer::new(std::io::BufWriter::new(f))?,
+            path: path.display().to_string(),
+            count: 0,
+            failed: false,
+        })
+    }
+
+    fn write(
+        &mut self,
+        src: Ipv4Addr,
+        src_port: u16,
+        dst: Ipv4Addr,
+        dst_port: u16,
+        payload: &[u8],
+    ) {
+        if self.failed {
+            return;
+        }
+        let d = pcap::Datagram {
+            time_us: crate::state::now_ms() * 1000,
+            src,
+            dst,
+            src_port,
+            dst_port,
+            payload: payload.to_vec(),
+        };
+        if let Err(e) = self.w.write(&d) {
+            crate::log::warn(&format!("DJ Link: recording stopped: {e}"));
+            self.failed = true;
+        }
+        self.count += 1;
+    }
+
+    fn flush(&mut self) {
+        let _ = self.w.flush();
+    }
+
+    fn finish(&mut self) {
+        self.flush();
+    }
+}
+
+/// Days since 1970 to (year, month, day), UTC.
+fn civil(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (yoe + era * 400 + (m <= 2) as i64, m, d)
 }
 
 fn handle(app: &App, p: Packet, src: Option<Ipv4Addr>, now: u64, simulated: bool) {

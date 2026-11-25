@@ -84,14 +84,18 @@ Based on the [DJ Link Ecosystem Analysis](https://djl-analysis.deepsymmetry.org/
 
 Planned events to grandMA3: beat, downbeat, 4-bar and 32-beat grid, track change, master change, phrase change, "next phrase in N beats". Rules live in `shows/<name>/cdj.toml`.
 
-Known limits: metadata queries need a device number 1-6 inside the query (not the announced number). Phrases only exist for tracks analysed in rekordbox. Opus Quad, XDJ-AZ and Denon StageLinQ are out of scope for now. rekordbox on the same machine holds UDP 50002, so status is not available next to it (beats still are, where the OS shares the ports). Field offsets for the CDJ-3000 position packet and the mixer status come from the protocol analysis and are not verified on hardware yet.
+Known limits: metadata queries need a device number 1-6 inside the query (not the announced number). Phrases only exist for tracks analysed in rekordbox. Opus Quad, XDJ-AZ and Denon StageLinQ are out of scope for now. rekordbox on the same machine holds UDP 50002, so status is not available next to it (beats still are, where the OS shares the ports). Keep-alive, beat, CDJ status and mixer status are checked against captures of nexus-generation hardware; the CDJ-3000 position packet and NXS2/3000 status are not verified on hardware yet.
 
 ## Testing without CDJs
 
-1. Replay of captured network traffic (pcap) for regression tests.
-2. [CDJ_DJM_Emulator](https://github.com/OllieCross/CDJ_DJM_Emulator) for daily development.
-3. [cdj3k-emu](https://github.com/nsaintot/cdj3k-emu) (real firmware in QEMU) as a final check.
-4. Built-in simulator: the **Simulator** button in the web UI starts two fake players (a CDJ-2000NXS2 and a CDJ-3000) and a mixer. It builds real packets that go through the same parser; the scenario (play, cue, master handoff, pause) repeats every 64 s. Unit tests use it too, plus captured packets.
+1. Public captures: `scripts/check-captures.sh` runs 18 captures by Deep Symmetry (CDJ-2000nexus players, DJM-2000nexus mixer; startup, load and play, sync and master handoff) through the parser. CI runs it on every push. The captures are downloaded, not stored in this repository.
+2. Recording in the club: the **Record** button writes all received and sent DJ Link packets to `logs/djlink-<time>.pcap` (raw IPv4, opens in Wireshark).
+3. `boothmate --check <capture>...` prints what Boothmate understood (devices, packet types, BPM range, beat and bar consistency, master and track events) and fails if a packet it should read did not parse. Reads pcap and pcapng from Wireshark, tcpdump and Boothmate.
+4. `boothmate --replay <capture>` plays a capture in real time into the web UI, as if the devices were on the network (loops).
+5. Built-in simulator: the **Simulator** button in the web UI starts two fake players (a CDJ-2000NXS2 and a CDJ-3000) and a mixer. It builds real packets that go through the same parser; the scenario (play, cue, master handoff, pause) repeats every 64 s. Unit tests use it too, plus captured packets.
+6. [CDJ_DJM_Emulator](https://github.com/OllieCross/CDJ_DJM_Emulator) and [cdj3k-emu](https://github.com/nsaintot/cdj3k-emu) (real firmware in QEMU) as further checks.
+
+Checklist for the first test with real players: [club-checklist.md](club-checklist.md).
 
 ## Safety
 

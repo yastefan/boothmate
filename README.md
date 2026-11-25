@@ -38,6 +38,8 @@ Connect the computer to the DJ Link network (the switch, or a LAN port of the mi
 
 To get play state and beat numbers, Boothmate announces itself as a silent virtual player with device number 7 (`cdj.player` in `boothmate.toml`), so it never takes a player's number. Without this (`cdj.status = false`), it still reads BPM and beats. rekordbox on the same computer blocks the status port. No CDJs at hand? Press **Simulator** in the web page.
 
+**Record** in the web page saves the DJ Link traffic to `logs/djlink-*.pcap`. `boothmate --replay <file>` plays such a recording back as if the players were there, and `boothmate --check <file>` shows what Boothmate understood. Before a first test with real players, see [docs/club-checklist.md](docs/club-checklist.md).
+
 ## Notes
 
 grandMA3 itself binds the OSC line's port. Boothmate shares it on `127.0.0.1` (address reuse); if it cannot, the web page shows the error and Boothmate keeps retrying. In that case switch Enable Output off, wait until Boothmate listens, and switch it on again.
@@ -54,7 +56,7 @@ Boothmate/
   ma-profiles/          grandMA3 version profiles (OSC addresses)
   devices/              MIDI controller profiles
   lua/                  grandMA3 plugin
-  logs/                 log of the last two runs
+  logs/                 log of the last two runs, DJ Link recordings
 ```
 
 ## Trying a branch (macOS)

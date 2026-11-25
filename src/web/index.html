@@ -112,7 +112,10 @@
   <section>
     <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
       <h2 style="margin: 0;">DJ Link</h2>
-      <button id="cdj-sim" title="Two fake players and a mixer, to try this without CDJs">Simulator</button>
+      <div class="bar">
+        <button id="cdj-rec" title="Record all DJ Link packets to logs/djlink-*.pcap, for Wireshark or boothmate --replay">Record</button>
+        <button id="cdj-sim" title="Two fake players and a mixer, to try this without CDJs">Simulator</button>
+      </div>
     </div>
     <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
     <div class="players" id="cdj-players"></div>
@@ -287,6 +290,8 @@ const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 6
 function renderCdj(st) {
   const c = st.cdj, devs = Object.values(c.devices);
   $("cdj-sim").classList.toggle("active", c.simulator);
+  $("cdj-rec").classList.toggle("active", !!c.recording);
+  $("cdj-rec").textContent = c.recording ? `Stop recording (${c.recorded} packets)` : "Record";
   $("cdj-dot").className = "dot " + (!c.enabled || c.error ? "bad" : devs.length ? "ok" : "warn");
   $("cdj-text").textContent = !c.enabled ? "DJ Link off" : c.error ? "DJ Link: port busy" : devs.length ? `DJ Link: ${devs.length} device${devs.length > 1 ? "s" : ""}` : "DJ Link: no devices";
   const m = c.master != null ? c.devices[c.master] : null;
@@ -295,6 +300,8 @@ function renderCdj(st) {
   else if (!c.enabled) info.push("Switched off in boothmate.toml (cdj.enabled).");
   else if (!devs.length) info.push("Waiting for CDJs and mixers on the network. Connect this computer to the DJ Link switch or mixer, or try the simulator.");
   if (m) info.push(`Tempo master: <b>${esc(m.name)} (${m.number})</b>${m.bpm != null ? ` · ${m.bpm.toFixed(2)} BPM` : ""}`);
+  if (c.replay) info.push(`Replaying <code>${esc(c.replay)}</code>`);
+  if (c.recording) info.push(`Recording to <code>${esc(c.recording)}</code>`);
   if (c.interface) info.push(`Network: ${esc(c.interface)}`);
   if (c.vcdj != null) info.push(`Status via virtual player ${c.vcdj}`);
   if (c.status_note && devs.some(d => !d.simulated)) info.push(esc(c.status_note));
@@ -320,7 +327,7 @@ function cdjCard(d, master) {
   if (d.on_air) chips.push(`<span class="chip ok">On air</span>`);
   if (d.sync) chips.push(`<span class="chip">Sync</span>`);
   if (d.track) chips.push(`<span class="chip dim" title="rekordbox ID ${d.track.id}, from player ${d.track.player}">${esc(d.track.slot)} #${d.track.id}</span>`);
-  if (d.simulated) chips.push(`<span class="chip dim">simulated</span>`);
+  if (d.simulated) chips.push(`<span class="chip dim">${last && last.cdj.replay ? "replay" : "simulated"}</span>`);
   const prog = d.position_ms != null && d.track_len_s ? `<div class="prog" title="${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}"><i style="width:${Math.min(100, d.position_ms / d.track_len_s / 10).toFixed(1)}%"></i></div><div class="small" style="text-align:left">${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}</div>` : "";
   const pitch = d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "";
   return `<div class="${cls.join(" ")}">
@@ -333,6 +340,7 @@ function cdjCard(d, master) {
   </div>`;
 }
 $("cdj-sim").onclick = () => post("/api/cdj/simulate", { on: !(last && last.cdj.simulator) });
+$("cdj-rec").onclick = () => post("/api/cdj/record", { on: !(last && last.cdj.record) });
 
 // MIDI ------------------------------------------------------------------------------------------
 const post = (url, body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
