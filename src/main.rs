@@ -6,6 +6,7 @@ mod log;
 mod midi;
 mod osc;
 mod plugin;
+mod plugin_update;
 mod profile;
 mod setup;
 mod state;

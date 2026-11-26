@@ -42,8 +42,12 @@ The plugin listens on TCP (default `127.0.0.1:9002`; `bind=0.0.0.0` only with a 
 | plugin -> Boothmate | `{"ev":"error","msg":"..."}` |
 | Boothmate -> plugin | `{"op":"speed","master":1,"bpm":128.0}`: `Master 3.1 At BPM 128.00` (tempo link) |
 | Boothmate -> plugin | `{"op":"phase","master":1}`: `FastSync Master 3.1`, at most every 4 s, followed by the exact BPM again |
+| Boothmate -> plugin | `{"op":"update","version":"0.4.1","xml":"...","lua":"..."}`: replace the plugin (0.4.0+, see below) |
+| plugin -> Boothmate | `{"ev":"update","state":"restarting"\|"failed","version":"0.4.1","msg":"..."}` |
 
 The plugin sends a page snapshot on connect, on `resync`, when a hooked object changes (assigned objects, their appearances, the page, the Sequences and Appearances pools) and when `CurrentExecPage()` changes (compared every frame, a local call). At most 10 snapshots per second.
+
+**Plugin self-update (0.4.0+).** Lua cannot reload itself, and the code lives in the show. "Update plugin in grandMA3" sends the plugin files that come with Boothmate. The plugin checks them (version, compiles, Boothmate's XML), writes them into the grandMA3 plugin library (`datapools/plugins`, found on `package.path`), stores a macro *Boothmate plugin update* in the first free slot after the last macro and fires it, then stops. The macro runs `Delete Plugin n`, `Import Plugin Library "boothmate.xml" At Plugin n`, `ReloadAllPlugins` and `Plugin "boothmate" "<same arguments>"` with short waits (the sequence verified in gma3-mcp KB-02). The new plugin deletes the macro 5 s after it started (`_G.__boothmate` survives ReloadAllPlugins). Boothmate marks the update done when the new version says hello. The show must be saved to keep it. Plugins before 0.4.0 are updated once by hand.
 
 ## MIDI module
 

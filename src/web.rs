@@ -37,6 +37,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/modules", post(set_modules))
         .route("/api/plugin", get(plugin_info))
         .route("/api/plugin/install", post(install_plugin))
+        .route("/api/plugin/update", post(update_plugin))
         .route("/api/ma3/setup", post(ma3_setup))
         .with_state(app)
 }
@@ -201,6 +202,14 @@ async fn install_plugin(Ax(app): Ax<Arc<App>>, Json(r): Json<InstallReq>) -> imp
     match crate::setup::install(&app.dir, &r.library) {
         Ok(m) => (StatusCode::OK, m),
         Err(e) => (StatusCode::BAD_REQUEST, e),
+    }
+}
+
+/// Asks the running plugin to replace itself with the bundled one (plugin 0.4.0+).
+async fn update_plugin(Ax(app): Ax<Arc<App>>) -> impl IntoResponse {
+    match crate::plugin_update::request(&app) {
+        Ok(m) => (StatusCode::OK, m),
+        Err(e) => (StatusCode::CONFLICT, e),
     }
 }
 
