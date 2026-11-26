@@ -167,7 +167,7 @@ fn be32(d: &[u8], o: usize) -> u32 {
 pub fn grid(blob: &[u8]) -> Option<Grid> {
     let entries = blob.get(0x14..)?;
     let mut g = Grid::default();
-    for e in entries.chunks_exact(16) {
+    for e in entries.as_chunks::<16>().0.iter() {
         let bb = le16(e, 0);
         if !(1..=4).contains(&bb) {
             continue;
@@ -203,7 +203,9 @@ fn wave(cols: Vec<[u8; 4]>, color: bool) -> Option<Wave> {
 pub fn mono_preview(blob: &[u8]) -> Option<Wave> {
     let cols = blob
         .get(..800)?
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| {
             let [r, g, b] = blue(c[1]);
             [c[0].min(31) * 8, r, g, b]
@@ -248,7 +250,9 @@ pub fn color_preview(blob: &[u8]) -> Option<Wave> {
     let n = be32(t, 0x10) as usize;
     let body = t.get(0x18..)?;
     let cols: Vec<[u8; 3]> = body
-        .chunks_exact(6)
+        .as_chunks::<6>()
+        .0
+        .iter()
         .take(n)
         .map(|c| [c[3], c[4], c[5]])
         .collect();
@@ -271,7 +275,9 @@ pub fn color_detail(blob: &[u8]) -> Option<Wave> {
     let n = be32(t, 0x10) as usize;
     let cols = t
         .get(0x18..)?
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .take(n)
         .map(|c| {
             let v = u16::from_be_bytes([c[0], c[1]]);
@@ -292,7 +298,9 @@ fn hf_ms(hf: u32) -> u32 {
 /// Cue list (request 0x2104): 36-byte entries. Older format, hot cues A-C only.
 pub fn cues(blob: &[u8]) -> Vec<Cue> {
     let mut out: Vec<Cue> = blob
-        .chunks_exact(36)
+        .as_chunks::<36>()
+        .0
+        .iter()
         .filter(|e| e[0] != 0 || e[1] != 0)
         .map(|e| Cue {
             hot: e[2],
@@ -346,10 +354,12 @@ pub fn cues_ext(blob: &[u8]) -> Vec<Cue> {
 
 /// UTF-16 of unknown byte order: ASCII text has its zero bytes on the high side.
 fn utf16(b: &[u8]) -> Option<String> {
-    let le = b.chunks_exact(2).filter(|c| c[1] == 0).count()
-        >= b.chunks_exact(2).filter(|c| c[0] == 0).count();
+    let le = b.as_chunks::<2>().0.iter().filter(|c| c[1] == 0).count()
+        >= b.as_chunks::<2>().0.iter().filter(|c| c[0] == 0).count();
     let units: Vec<u16> = b
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| {
             if le {
                 u16::from_le_bytes([c[0], c[1]])
