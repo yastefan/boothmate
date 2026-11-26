@@ -40,6 +40,8 @@ The plugin listens on TCP (default `127.0.0.1:9002`; `bind=0.0.0.0` only with a 
 | plugin -> Boothmate | `{"ev":"hello","plugin":"0.1.0","ma":"2.5.1.1"}` |
 | plugin -> Boothmate | `{"ev":"page","page":1,"executors":[{"no":201,"class":"Sequence","obj":2,"name":"...","addr":"14.14.1.7.2","color":"#ff0000","active":true,"fader":100,"cue":"2 Rot"}]}` |
 | plugin -> Boothmate | `{"ev":"error","msg":"..."}` |
+| Boothmate -> plugin | `{"op":"speed","master":1,"bpm":128.0}`: `Master 3.1 At BPM 128.00` (tempo link) |
+| Boothmate -> plugin | `{"op":"phase","master":1}`: `FastSync Master 3.1`, at most every 4 s, followed by the exact BPM again |
 
 The plugin sends a page snapshot on connect, on `resync`, when a hooked object changes (assigned objects, their appearances, the page, the Sequences and Appearances pools) and when `CurrentExecPage()` changes (compared every frame, a local call). At most 10 snapshots per second.
 
@@ -82,7 +84,16 @@ Based on the [DJ Link Ecosystem Analysis](https://djl-analysis.deepsymmetry.org/
 - Tempo master: the player whose status has the master flag. Without status, the player that sends beats stands in.
 - The tracker emits events (device found/lost, master, track, play, beat with bar) for the log and, later, for grandMA3.
 
-Planned events to grandMA3: beat, downbeat, 4-bar and 32-beat grid, track change, master change, phrase change, "next phrase in N beats". Rules live in `shows/<name>/cdj.toml`.
+### Tempo link (M4)
+
+Rules in `tempo.toml` (data folder), edited in the web UI. Code in `src/tempo.rs`.
+
+- **Speed masters** follow the effective BPM (pitch included) of the tempo master or a fixed player, times a factor (half or double time). Boothmate sends a new value only on a change of at least 0.05 BPM, at most 5 times a second, and holds the last value while the followed player is stopped. A master change on the CDJs moves the source with it. The plugin sets the tempo with `Master 3.n At BPM x`: exact to about 0.0003 BPM, no oops entries, microseconds per call ([spike](spikes/m4-speedmaster.md)).
+- **Phase:** grandMA3 has no command that restarts a speed master's beat. `FastSync Master 3.n` re-syncs the phasers on that master but counts as a Learn tap (two taps 100 ms apart set 225 BPM). Option `phase = "phrase"` sends one FastSync on the first beat of each 8-bar phrase; the plugin rate-limits it and restores the exact BPM right after. Chases with cue timing from a speed master are not re-phased by it.
+- **Beat actions** press an executor key (OSC input, 60 ms tap) on every beat, downbeat, 4 bars, phrase (8 bars), track change or master change, from the tempo master or a fixed player. The page is fixed or the current one.
+- Nothing is sent without the plugin connection or with a fallback profile.
+
+Planned: real rekordbox phrases (intro, chorus, drop) and "next phrase in N beats" with the track metadata (M5).
 
 Known limits: metadata queries need a device number 1-6 inside the query (not the announced number). Phrases only exist for tracks analysed in rekordbox. Opus Quad, XDJ-AZ and Denon StageLinQ are out of scope for now. rekordbox on the same machine holds UDP 50002, so status is not available next to it (beats still are, where the OS shares the ports). Keep-alive, beat, CDJ status and mixer status are checked against captures of nexus-generation hardware; the CDJ-3000 position packet and NXS2/3000 status are not verified on hardware yet.
 
@@ -110,8 +121,8 @@ Checklist for the first test with real players: [club-checklist.md](club-checkli
 - **M0 Spikes (done):** `HookObjectChange` and native OSC feedback tested in onPC 2.5.1, see [spikes/m0-feedback.md](spikes/m0-feedback.md).
 - **M1 Core (done):** Rust project, macOS + Windows builds, portable layout, OSC + Lua connection, MA profile 2.5, small web UI.
 - **M2 MIDI mapper (done):** device discovery and profiles, MIDI learn, feedback, page follow, two reference profiles, test controller in the web UI.
-- **M3 CDJ discovery, beat and status (in review):** automatic discovery of CDJs and mixers, BPM and beat in bar, CDJ-3000 position, silent virtual player for status (play state, track, beat number, master, on-air), bar and 4/8-bar counting, simulator, DJ Link in the web UI.
-- **M4 CDJ events to grandMA3:** beat, bar and phrase grid, track and master changes as grandMA3 actions.
+- **M3 CDJ discovery, beat and status (done):** automatic discovery of CDJs and mixers, BPM and beat in bar, CDJ-3000 position, silent virtual player for status (play state, track, beat number, master, on-air), bar and 4/8-bar counting, simulator, DJ Link in the web UI.
+- **M4 Tempo link (in review):** speed masters follow the CDJ tempo through the plugin, phaser sync per phrase, beat, bar, phrase, track and master actions on executor keys.
 - **M5 Metadata and timeline:** beat grid, waveform, phrases, "drop in N beats", timeline view.
 
 ## Licensing notes

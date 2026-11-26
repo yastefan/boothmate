@@ -8,6 +8,7 @@ mod osc;
 mod plugin;
 mod profile;
 mod state;
+mod tempo;
 mod web;
 
 use std::path::PathBuf;
@@ -27,6 +28,10 @@ pub struct App {
     pub resync: Notify,
     /// Messages from the test controller in the web UI.
     pub midi_test: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Events from the DJ Link module, for the tempo link.
+    pub cdj_events: tokio::sync::broadcast::Sender<Arc<Vec<cdj::tracker::Event>>>,
+    /// JSON lines for the Lua plugin (speed and phase).
+    pub plugin_ops: tokio::sync::broadcast::Sender<String>,
     /// Capture file to replay as DJ Link traffic (`--replay`).
     pub cdj_replay: Option<PathBuf>,
     /// Socket for OSC input to grandMA3 (executor keys and faders).
@@ -151,6 +156,8 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         resync: Notify::new(),
         midi_test,
         cdj_replay,
+        cdj_events: tokio::sync::broadcast::channel(256).0,
+        plugin_ops: tokio::sync::broadcast::channel(64).0,
         osc_out,
     });
 
@@ -170,6 +177,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         tokio::spawn(plugin::run(app.clone()));
         tokio::spawn(midi::run(app.clone(), midi_test_rx));
         tokio::spawn(cdj::run(app.clone()));
+        tokio::spawn(tempo::run(app.clone()));
         let server = axum::serve(web, web::router(app.clone()));
         tokio::select! {
             r = server => r.map_err(|e| format!("web UI: {e}")),

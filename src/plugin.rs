@@ -67,12 +67,22 @@ async fn session(app: &Arc<App>, stream: TcpStream) -> String {
         return format!("write failed: {e}");
     }
     let mut lines = BufReader::new(read).lines();
+    let mut ops = app.plugin_ops.subscribe();
     loop {
         tokio::select! {
             line = lines.next_line() => match line {
                 Ok(Some(line)) => handle_line(app, &line),
                 Ok(None) => return "closed by grandMA3".into(),
                 Err(e) => return format!("read failed: {e}"),
+            },
+            op = ops.recv() => match op {
+                Ok(op) => {
+                    if let Err(e) = write.write_all(format!("{op}\n").as_bytes()).await {
+                        return format!("write failed: {e}");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(_) => return "stopped".into(),
             },
             _ = app.resync.notified() => {
                 if let Err(e) = write.write_all(b"{\"op\":\"resync\"}\n").await {

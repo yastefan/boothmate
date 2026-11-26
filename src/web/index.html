@@ -37,6 +37,8 @@
   .warnbox { background: #3a2e10; border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; }
   details { color: var(--muted); }
   code { color: var(--text); }
+  #tempo-box input, #tempo-box select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; padding: 2px 4px; }
+  #tempo-box table { margin-top: 6px; }
   .tile.pick { cursor: pointer; border-style: dashed; border-color: var(--accent); }
   .tile.pick:hover { background: #20283a; }
   .maps { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
@@ -119,6 +121,15 @@
     </div>
     <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
     <div class="players" id="cdj-players"></div>
+    <details id="tempo-box" style="margin-top: 10px;">
+      <summary>Tempo to grandMA3</summary>
+      <p class="muted">Speed masters follow the BPM of the tempo master (or a fixed player) through the plugin. Beat actions press an executor key on beats, bars and phrases. Saved in <code>tempo.toml</code>.</p>
+      <p id="tempo-note" class="hint" hidden></p>
+      <table><thead><tr><th>Speed master</th><th>Follows</th><th>Factor</th><th title="FastSync of the phasers on this speed master, on the first beat of every 8-bar phrase">Phaser sync</th><th>BPM</th><th></th></tr></thead><tbody id="speed-rows"></tbody></table>
+      <p><button id="speed-add">Add speed master</button></p>
+      <table><thead><tr><th>On</th><th>Executor</th><th>Page</th><th>Beats of</th><th></th></tr></thead><tbody id="action-rows"></tbody></table>
+      <p><button id="action-add">Add beat action</button></p>
+    </details>
   </section>
   <section>
     <h2>MIDI</h2>
@@ -269,6 +280,7 @@ function render(st) {
 
   renderMidi(st);
   renderCdj(st);
+  renderTempo(st);
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -341,6 +353,55 @@ function cdjCard(d, master) {
 }
 $("cdj-sim").onclick = () => post("/api/cdj/simulate", { on: !(last && last.cdj.simulator) });
 $("cdj-rec").onclick = () => post("/api/cdj/record", { on: !(last && last.cdj.record) });
+
+// Tempo link ------------------------------------------------------------------------------------
+const triggers = { beat: "every beat", downbeat: "every bar (downbeat)", bar4: "every 4 bars", phrase: "every phrase (8 bars)", track: "track change", master: "master change" };
+const opt = (v, cur, label) => `<option value="${esc(v)}"${String(v) === String(cur) ? " selected" : ""}>${esc(label ?? v)}</option>`;
+const playerSel = (i, kind, cur) => `<select data-k="${kind}" data-i="${i}" data-f="player">${opt("", cur ?? "", "tempo master")}${range(1, 6).map(n => opt(n, cur ?? "", "player " + n)).join("")}</select>`;
+let tempoRules = null;
+
+function renderTempo(st) {
+  const t = st.tempo;
+  tempoRules = t.rules;
+  $("tempo-note").hidden = !t.note || !(t.rules.speed.length || t.rules.action.length);
+  $("tempo-note").textContent = t.note || "";
+  $("tempo-box").querySelector("summary").textContent = `Tempo to grandMA3 (${t.rules.speed.length + t.rules.action.length})`;
+  setHtml($("speed-rows"), t.rules.speed.map((l, i) => `<tr>
+    <td>Master 3.<input type="number" min="1" max="99" value="${l.master}" data-k="speed" data-i="${i}" data-f="master" style="width:4em"></td>
+    <td>${playerSel(i, "speed", l.player)}</td>
+    <td><select data-k="speed" data-i="${i}" data-f="factor">${[0.25, 0.5, 1, 2, 4].map(f => opt(f, l.factor, "× " + f)).join("")}</select></td>
+    <td><select data-k="speed" data-i="${i}" data-f="phase">${opt("off", l.phase)}${opt("phrase", l.phase, "every phrase")}</select></td>
+    <td>${t.sent[l.master] != null ? t.sent[l.master].toFixed(2) + " BPM" : "&ndash;"}</td>
+    <td><button data-del="speed" data-i="${i}">Delete</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No speed master linked.</td></tr>`);
+  setHtml($("action-rows"), t.rules.action.map((a, i) => `<tr>
+    <td><select data-k="action" data-i="${i}" data-f="on">${Object.entries(triggers).map(([k, v]) => opt(k, a.on, v)).join("")}</select></td>
+    <td><input type="number" min="101" max="498" value="${a.exec}" data-k="action" data-i="${i}" data-f="exec" style="width:5em"></td>
+    <td><input type="number" min="1" placeholder="current" value="${a.page ?? ""}" data-k="action" data-i="${i}" data-f="page" style="width:6em"></td>
+    <td>${playerSel(i, "action", a.player)}</td>
+    <td><button data-del="action" data-i="${i}">Delete</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">No beat actions.</td></tr>`);
+}
+
+function saveTempo(rules) { post("/api/tempo", rules); }
+$("tempo-box").onchange = e => {
+  const el = e.target, k = el.dataset.k, i = +el.dataset.i, f = el.dataset.f;
+  if (!k || !tempoRules) return;
+  const rules = structuredClone(tempoRules), item = rules[k][i];
+  const v = el.value;
+  if (f === "player" || f === "page") { if (v === "") delete item[f]; else item[f] = +v; }
+  else if (f === "master" || f === "exec" || f === "factor") item[f] = +v;
+  else item[f] = v;
+  saveTempo(rules);
+};
+$("tempo-box").onclick = e => {
+  const b = e.target.closest("button");
+  if (!b || !tempoRules) return;
+  const rules = structuredClone(tempoRules);
+  if (b.id === "speed-add") rules.speed.push({ master: (rules.speed.at(-1)?.master ?? 0) + 1, factor: 1, phase: "off" });
+  else if (b.id === "action-add") rules.action.push({ on: "downbeat", exec: 101 });
+  else if (b.dataset.del) rules[b.dataset.del].splice(+b.dataset.i, 1);
+  else return;
+  saveTempo(rules);
+};
 
 // MIDI ------------------------------------------------------------------------------------------
 const post = (url, body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
