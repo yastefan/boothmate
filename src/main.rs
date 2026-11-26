@@ -141,6 +141,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
 
     let mut st = state::State::default();
     st.connections.osc_listen = config.osc.listen.clone();
+    st.connections.osc_send = config.osc.send.clone();
     st.connections.plugin_addr = format!("{}:{}", config.plugin.host, config.plugin.port);
     st.connections.profile = start.id.clone();
 

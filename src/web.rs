@@ -32,6 +32,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/cdj/record", post(record_cdj))
         .route("/api/tempo", post(set_tempo))
         .route("/api/timecode", post(set_timecode))
+        .route("/api/log", post(recent_log))
         .with_state(app)
 }
 
@@ -152,6 +153,17 @@ async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl Into
 async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
     app.update(|st| st.cdj.record = r.on);
     "ok"
+}
+
+#[derive(Deserialize)]
+struct LogReq {
+    #[serde(default)]
+    after: u64,
+}
+
+/// Recent log lines (info and warnings) after a sequence number.
+async fn recent_log(Json(r): Json<LogReq>) -> impl IntoResponse {
+    Json(crate::log::recent(r.after))
 }
 
 /// Switches Art-Net timecode on or off (until restart; the default is in boothmate.toml).
