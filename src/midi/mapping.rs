@@ -311,6 +311,7 @@ pub fn apply_local(st: &mut State, action: &Action) {
                 .unwrap_or(0.0);
             s.faders.insert("FaderMaster".into(), set(v));
             s.updated = now;
+            s.local_until = now + crate::state::LOCAL_FADER_MS;
             return;
         }
     }
@@ -323,6 +324,7 @@ pub fn apply_local(st: &mut State, action: &Action) {
             .unwrap_or(0.0);
         m.values.insert("FaderMaster".into(), set(v));
         m.updated = now;
+        m.local_until = now + crate::state::LOCAL_FADER_MS;
         return;
     }
     e.fader = Some(set(e.fader.unwrap_or(0.0)));

@@ -28,7 +28,14 @@ pub struct Sequence {
     pub faders: BTreeMap<String, f32>,
     /// Unix time in ms of the last change.
     pub updated: u64,
+    /// Until this time (ms) the fader value set from Boothmate's own input wins over values
+    /// read back from grandMA3, which may still be on an older position.
+    #[serde(skip)]
+    pub local_until: u64,
 }
+
+/// How long a fader value set from Boothmate's own input wins over read-back values (ms).
+pub const LOCAL_FADER_MS: u64 = 1_500;
 
 /// One executor of the current page, as reported by the plugin.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -63,6 +70,9 @@ pub struct Master {
     pub values: BTreeMap<String, f32>,
     pub text: Option<String>,
     pub updated: u64,
+    /// See [`Sequence::local_until`].
+    #[serde(skip)]
+    pub local_until: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -200,7 +210,9 @@ impl State {
                 if let Some(n) = name.filter(|n| !n.is_empty()) {
                     s.name = n;
                 }
-                s.faders.insert(token, value);
+                if token != "FaderMaster" || now >= s.local_until {
+                    s.faders.insert(token, value);
+                }
                 s.updated = now;
             }
             OscEvent::Master {
@@ -212,7 +224,7 @@ impl State {
             } => {
                 let m = self.masters.entry(key).or_default();
                 m.label = label;
-                if let Some(v) = value {
+                if let Some(v) = value.filter(|_| token != "FaderMaster" || now >= m.local_until) {
                     m.values.insert(token, v);
                 }
                 if text.is_some() {
@@ -238,7 +250,7 @@ impl State {
                 s.playback = if a { Playback::On } else { Playback::Off };
                 s.cue = if a { e.cue.clone() } else { None };
             }
-            if let Some(f) = e.fader {
+            if let Some(f) = e.fader.filter(|_| now >= s.local_until) {
                 s.faders.insert("FaderMaster".into(), f);
             }
             s.updated = now;
@@ -308,6 +320,45 @@ mod tests {
         assert_eq!(m.values["FaderMaster"], 60.0);
         assert_eq!(m.text.as_deref(), Some("120 BPM"));
         assert_eq!(m.label, "Speed 1");
+    }
+
+    #[test]
+    fn own_fader_moves_win_over_read_back() {
+        // A snapshot or OSC output right after a fader move from Boothmate may carry the old
+        // position (or the one grandMA3 had when the sequence switched on or off).
+        let mut st = State::default();
+        let s = st.sequences.entry(1).or_default();
+        s.faders.insert("FaderMaster".into(), 70.0);
+        s.local_until = now_ms() + LOCAL_FADER_MS;
+        let ex = Executor {
+            no: 201,
+            class: "Sequence".into(),
+            obj: Some(1),
+            name: "S1".into(),
+            addr: None,
+            color: None,
+            active: Some(false),
+            fader: Some(3.0),
+            cue: None,
+        };
+        st.apply_page(Some(1), vec![ex.clone()]);
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 70.0);
+        assert_eq!(
+            st.sequences[&1].playback,
+            Playback::Off,
+            "state still comes through"
+        );
+        st.apply_osc(OscEvent::SequenceFader {
+            seq: 1,
+            token: "FaderMaster".into(),
+            value: 3.0,
+            name: None,
+        });
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 70.0);
+        // Later, grandMA3's value counts again.
+        st.sequences.get_mut(&1).unwrap().local_until = 0;
+        st.apply_page(Some(1), vec![ex]);
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 3.0);
     }
 
     #[test]
