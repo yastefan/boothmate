@@ -247,6 +247,13 @@ impl Engine {
     }
 }
 
+/// Speed and phase messages need plugin 0.2.0 or later.
+pub fn plugin_supports_speed(version: &str) -> bool {
+    let mut parts = version.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    (major, minor) >= (0, 2)
+}
+
 pub fn path(dir: &Path) -> PathBuf {
     dir.join("tempo.toml")
 }
@@ -374,8 +381,21 @@ pub async fn run(app: Arc<App>) {
             for i in fired {
                 st.tempo.fired.insert(i, now);
             }
-            st.tempo.note =
-                (!ok).then(|| "Waiting for the grandMA3 plugin: nothing is sent.".into());
+            let old = st
+                .connections
+                .plugin_version
+                .as_deref()
+                .filter(|v| !plugin_supports_speed(v))
+                .map(str::to_string);
+            st.tempo.note = if !ok {
+                Some("Waiting for the grandMA3 plugin: nothing is sent.".into())
+            } else if let (Some(v), false) = (old, st.tempo.rules.speed.is_empty()) {
+                Some(format!(
+                    "The plugin in grandMA3 is version {v}, which ignores speed masters. Import lua/boothmate.xml from this Boothmate again (0.2.0 or later) and restart the plugin."
+                ))
+            } else {
+                None
+            };
         });
     }
 }
@@ -531,6 +551,13 @@ mod tests {
         );
         assert_eq!(count(104), 0, "player 3 does not play");
         assert_eq!(phases, 2);
+    }
+
+    #[test]
+    fn plugin_version_check() {
+        assert!(!plugin_supports_speed("0.1.0"));
+        assert!(plugin_supports_speed("0.2.0"));
+        assert!(plugin_supports_speed("1.0"));
     }
 
     #[test]
