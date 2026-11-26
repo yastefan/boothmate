@@ -9,6 +9,7 @@ mod plugin;
 mod profile;
 mod state;
 mod tempo;
+mod timecode;
 mod web;
 
 use std::path::PathBuf;
@@ -178,6 +179,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         tokio::spawn(midi::run(app.clone(), midi_test_rx));
         tokio::spawn(cdj::run(app.clone()));
         tokio::spawn(tempo::run(app.clone()));
+        tokio::spawn(timecode::run(app.clone()));
         let server = axum::serve(web, web::router(app.clone()));
         tokio::select! {
             r = server => r.map_err(|e| format!("web UI: {e}")),

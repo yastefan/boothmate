@@ -93,6 +93,7 @@ pub struct State {
     pub midi: crate::midi::mapping::MidiState,
     pub cdj: crate::cdj::tracker::CdjState,
     pub tempo: crate::tempo::TempoState,
+    pub timecode: crate::timecode::TimecodeState,
 }
 
 /// A change parsed from one OSC message.

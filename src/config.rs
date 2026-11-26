@@ -44,6 +44,15 @@ status = true
 # CDJ's place.
 player = 7
 
+[timecode]
+# Experimental: the CDJ playhead as Art-Net timecode (ArtTimeCode) for grandMA3 timecode shows.
+# Stream 0 = tempo master, stream n = player n. Can also be switched on in the web UI.
+enabled = false
+# Where to send: grandMA3's Art-Net interface (IP:6454) or a broadcast address.
+target = "127.0.0.1:6454"
+# 24, 25 or 30.
+fps = 30
+
 [web]
 listen = "127.0.0.1:8088"
 "#;
@@ -56,7 +65,26 @@ pub struct Config {
     pub ma: Ma,
     pub midi: Midi,
     pub cdj: Cdj,
+    pub timecode: Timecode,
     pub web: Web,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Timecode {
+    pub enabled: bool,
+    pub target: String,
+    pub fps: u8,
+}
+
+impl Default for Timecode {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            target: "127.0.0.1:6454".into(),
+            fps: 30,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

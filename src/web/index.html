@@ -121,6 +121,10 @@
     </div>
     <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
     <div class="players" id="cdj-players"></div>
+    <div class="bar" style="margin-top: 10px;">
+      <button id="tc-on" title="Experimental: send the CDJ playhead as Art-Net timecode (ArtTimeCode) to grandMA3. Stream 0 = tempo master, stream n = player n.">Timecode</button>
+      <span class="muted" id="tc-info"></span>
+    </div>
     <details id="tempo-box" style="margin-top: 10px;">
       <summary>Tempo to grandMA3</summary>
       <p class="muted">Speed masters follow the BPM of the tempo master (or a fixed player) through the plugin. Beat actions press an executor key on beats, bars and phrases. Saved in <code>tempo.toml</code>.</p>
@@ -303,6 +307,12 @@ function renderCdj(st) {
   const c = st.cdj, devs = Object.values(c.devices);
   $("cdj-sim").classList.toggle("active", c.simulator);
   $("cdj-rec").classList.toggle("active", !!c.recording);
+  const tc = st.timecode;
+  $("tc-on").classList.toggle("active", tc.on);
+  $("tc-info").textContent = !tc.on ? "Art-Net timecode off"
+    : tc.error ? tc.error
+    : tc.streams.length ? `to ${tc.target}: ` + tc.streams.map(x => `stream ${x.id} (player ${x.player}) ${x.tc}${x.estimated ? " ~" : ""}`).join(" · ")
+    : `to ${tc.target}: waiting for a playing player`;
   $("cdj-rec").textContent = c.recording ? `Stop recording (${c.recorded} packets)` : "Record";
   $("cdj-dot").className = "dot " + (!c.enabled || c.error ? "bad" : devs.length ? "ok" : "warn");
   $("cdj-text").textContent = !c.enabled ? "DJ Link off" : c.error ? "DJ Link: port busy" : devs.length ? `DJ Link: ${devs.length} device${devs.length > 1 ? "s" : ""}` : "DJ Link: no devices";
@@ -351,6 +361,7 @@ function cdjCard(d, master) {
     ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
   </div>`;
 }
+$("tc-on").onclick = () => post("/api/timecode", { on: !(last && last.timecode.on) });
 $("cdj-sim").onclick = () => post("/api/cdj/simulate", { on: !(last && last.cdj.simulator) });
 $("cdj-rec").onclick = () => post("/api/cdj/record", { on: !(last && last.cdj.record) });
 
