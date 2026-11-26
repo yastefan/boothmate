@@ -40,6 +40,8 @@ To get play state and beat numbers, Boothmate announces itself as a silent virtu
 
 **Tempo to grandMA3** (in the DJ Link section): link speed masters to the CDJs. Speed master 3.1 then follows the tempo master's BPM exactly, also when the master moves to another player, optionally at half or double time and with a phaser sync at the start of each phrase. Beat actions press an executor on every beat, bar, 4 bars, phrase, track change or master change. Needs the plugin (version 0.2.0 or later: re-import `lua/boothmate.xml`). Saved in `tempo.toml`.
 
+**Timecode (experimental):** the **Timecode** button in the DJ Link section sends the playhead of the CDJs as Art-Net timecode (ArtTimeCode) to grandMA3: stream 0 follows the tempo master, stream n player n, only while playing. In grandMA3, set a timecode slot to Art-Net input and point a timecode show at that slot. CDJ-3000s send their exact position; older players are estimated from the beat number (shown with `~`). Target and frame rate are in `boothmate.toml` under `[timecode]`.
+
 **Record** in the web page saves the DJ Link traffic to `logs/djlink-*.pcap`. `boothmate --replay <file>` plays such a recording back as if the players were there, and `boothmate --check <file>` shows what Boothmate understood. Before a first test with real players, see [docs/club-checklist.md](docs/club-checklist.md).
 
 ## Notes
