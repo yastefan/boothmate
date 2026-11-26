@@ -98,20 +98,126 @@
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chip.ok { background: #1d3a2a; color: #9ff0bf; } .chip.warn { background: #3a2e10; color: #ffd779; }
   .prog { height: 4px; background: #0c0d10; border-radius: 2px; overflow: hidden; } .prog i { display: block; height: 100%; background: var(--accent); opacity: .6; }
+  /* Tabs */
+  header { position: sticky; top: 0; z-index: 5; background: #13161b; }
+  #tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+  #tabs button { display: flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #b7bec7; }
+  #tabs button:hover { background: #1d2129; }
+  #tabs button.sel { background: #262c37; color: #fff; font-weight: 600; }
+  #tabs .dot.none { display: none; }
+  .dot.off { background: #5b6470; }
+  .hdr-right { margin-left: auto; display: flex; gap: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hdr-right b { color: var(--text); font-weight: 600; }
+  [data-panel] { display: none; } [data-panel].show { display: block; }
+  .badbox { background: #2c1517; border: 1px solid #6b2a2e; border-radius: 8px; padding: 8px 12px; }
+  /* Status */
+  .summary { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 12px; margin-bottom: 14px; }
+  .summary .dot { width: 14px; height: 14px; }
+  .summary b { font-size: 16px; display: block; }
+  .summary.ok { background: #132a1d; border: 1px solid #245a3a; } .summary.ok span { color: #a8e6c1; }
+  .summary.warn { background: #2a2210; border: 1px solid #5c4813; } .summary.warn span { color: #e8d39b; }
+  .summary.bad { background: #2c1517; border: 1px solid #6b2a2e; } .summary.bad span { color: #f2c4c6; }
+  .health { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; margin-bottom: 16px; }
+  .htile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 5px; text-decoration: none; color: var(--text); min-width: 0; }
+  .htile:hover { border-color: #3a4250; }
+  .htile .t { display: flex; align-items: center; gap: 8px; }
+  .htile .t b { font-size: 15px; }
+  .htile .t em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+  .htile .d { color: #c3c9d0; overflow-wrap: anywhere; }
+  .htile .h { color: var(--muted); font-size: 13px; }
+  .lv-ok { color: var(--ok); } .lv-warn { color: var(--warn); } .lv-bad { color: #ff6b6b; } .lv-off { color: var(--muted); }
+  .cols { display: flex; flex-wrap: wrap; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
+  .card.grow { flex: 999 1 480px; } .card.side { flex: 1 1 320px; }
+  .cardhead { display: flex; align-items: baseline; margin-bottom: 10px; } .cardhead h2 { margin: 0; } .cardhead a { margin-left: auto; font-size: 13px; color: #7cbcff; }
+  .loglist { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .loglist div { display: flex; gap: 12px; } .loglist time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+  .loglist .warn { color: var(--warn); }
+  table.kv td:first-child { color: var(--muted); width: 180px; }
+  /* Live */
+  #live.show { display: flex; flex-direction: column; gap: 14px; }
+  .lv-wrap { display: flex; flex-wrap: wrap; gap: 14px; }
+  .lv-main { flex: 999 1 520px; min-width: 0; background: #121419; border: 2px solid var(--warn); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .lv-main.nomaster { border-color: var(--line); }
+  .lv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+  .lv-tag { font-size: 14px; font-weight: 700; color: #0e1014; background: var(--warn); border-radius: 6px; padding: 3px 10px; }
+  .lv-head strong { font-size: 24px; } .lv-head .m { color: var(--muted); font-size: 18px; }
+  .lv-head .pos { margin-left: auto; font-size: 20px; color: #c3c9d0; font-variant-numeric: tabular-nums; }
+  .lv-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 32px; }
+  .lv-bpm { font-size: clamp(64px, 11vw, 128px); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .lv-sub { color: var(--muted); font-size: 18px; }
+  .lv-beats { flex: 1 1 260px; display: flex; flex-direction: column; gap: 12px; }
+  .lv-beats .b4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .lv-beats .b4 i { height: 48px; border-radius: 8px; background: #1b2028; }
+  .lv-beats .b4 i.past { background: #2a3a52; } .lv-beats .b4 i.on { background: var(--accent); } .lv-beats .b4 i.on.down { background: var(--warn); }
+  .lv-beats .b8 { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; } .lv-beats .b8 i { height: 10px; border-radius: 3px; background: #1b2028; } .lv-beats .b8 i.on { background: #8a6cff; }
+  .lv-beats .txt { display: flex; justify-content: space-between; color: #c3c9d0; font-size: 18px; }
+  .lv-next { display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-radius: 12px; background: #1b1f27; font-size: 22px; }
+  .lv-next b { font-variant-numeric: tabular-nums; margin-left: auto; }
+  .lv-time { position: relative; height: 96px; border-radius: 10px; background: #0b0d10; overflow: hidden; }
+  .lv-time .done { position: absolute; inset: 0 auto 0 0; background: #1c2a3d; }
+  .lv-time .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #2a3342; }
+  .lv-time .head { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; }
+  .lv-time .note { position: absolute; left: 12px; bottom: 8px; font-size: 12px; color: var(--muted); }
+  .lv-side { flex: 1 1 260px; display: flex; flex-direction: column; gap: 12px; }
+  .lv-other { background: #121419; border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .lv-other.playing { border-color: var(--ok); }
+  .lv-other .bpm { font-size: 44px; font-weight: 700; line-height: 1; color: #c3c9d0; font-variant-numeric: tabular-nums; }
+  .lv-health { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; min-height: 56px; padding: 8px 20px; border-radius: 12px; background: #121419; border: 1px solid var(--line); color: #c3c9d0; font-size: 16px; text-decoration: none; }
+  .lv-health span { display: flex; align-items: center; gap: 8px; }
+  .lv-health .dot { width: 12px; height: 12px; }
+  .lv-health .msg { margin-left: auto; font-weight: 600; }
+  @media (max-width: 700px) { header { position: static; } }
+  .lv-empty { color: var(--muted); font-size: 18px; padding: 40px 0; text-align: center; }
 </style>
 </head>
 <body>
 <header>
   <h1>Boothmate</h1>
-  <div class="status"><span class="dot" id="osc-dot"></span><span id="osc-text">OSC</span></div>
-  <div class="status"><span class="dot" id="plugin-dot"></span><span id="plugin-text">Plugin</span></div>
-  <div class="status"><span class="dot" id="cdj-dot"></span><span id="cdj-text">DJ Link</span></div>
-  <div class="status" id="page-text"></div>
-  <button id="resync" title="Ask the plugin to read the page again">Resync</button>
+  <nav id="tabs" aria-label="Sections">
+    <button data-tab="status"><span class="dot" id="dot-status"></span>Status</button>
+    <button data-tab="live">Live</button>
+    <button data-tab="cdj"><span class="dot" id="dot-cdj"></span>CDJs</button>
+    <button data-tab="mapping"><span class="dot" id="dot-mapping"></span>MIDI &amp; Mapping</button>
+    <button data-tab="test">Test controller</button>
+    <button data-tab="ma3"><span class="dot" id="dot-ma3"></span>grandMA3</button>
+    <button data-tab="log">Log</button>
+  </nav>
+  <div class="hdr-right"><span id="page-text"></span><span id="hdr-bpm"></span></div>
 </header>
 <main>
   <div id="fallback" class="warnbox" hidden></div>
-  <section>
+  <div id="offline" class="badbox" hidden>Boothmate is not reachable. Is it still running?</div>
+
+  <!-- Learn bar: shared by the mapping and test controller tabs. -->
+  <section id="learnbar" hidden>
+    <div class="bar">
+      <button id="learn">Learn</button>
+      <label><input type="checkbox" id="follow" checked> new mappings follow the page</label>
+      <span id="devices" class="muted"></span>
+    </div>
+    <p id="learn-hint" class="hint" hidden></p>
+    <p class="muted" id="last-input"></p>
+  </section>
+
+  <section data-panel="status">
+    <div id="summary" class="summary"></div>
+    <div class="health" id="health"></div>
+    <div class="cols">
+      <div class="card grow">
+        <div class="cardhead"><h2>DJ Link</h2><a href="#cdj">Open CDJs</a></div>
+        <div class="players" id="status-players"></div>
+      </div>
+      <div class="card side">
+        <div class="cardhead"><h2>Recent events</h2><a href="#log">Full log</a></div>
+        <div id="status-log" class="loglist"></div>
+      </div>
+    </div>
+  </section>
+
+  <section data-panel="live" id="live"></section>
+
+  <section data-panel="cdj">
     <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
       <h2 style="margin: 0;">DJ Link</h2>
       <div class="bar">
@@ -121,60 +227,59 @@
     </div>
     <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
     <div class="players" id="cdj-players"></div>
-    <div class="bar" style="margin-top: 10px;">
+    <h2 style="margin-top: 20px;">Timecode to grandMA3</h2>
+    <div class="bar">
       <button id="tc-on" title="Experimental: send the CDJ playhead as Art-Net timecode (ArtTimeCode) to grandMA3. Stream 0 = tempo master, stream n = player n.">Timecode</button>
       <span class="muted" id="tc-info"></span>
     </div>
-    <details id="tempo-box" style="margin-top: 10px;">
-      <summary>Tempo to grandMA3</summary>
+    <div id="tempo-box" style="margin-top: 20px;">
+      <h2 id="tempo-title">Tempo to grandMA3</h2>
       <p class="muted">Speed masters follow the BPM of the tempo master (or a fixed player) through the plugin. Beat actions press an executor key on beats, bars and phrases. Saved in <code>tempo.toml</code>.</p>
       <p id="tempo-note" class="hint" hidden></p>
       <table><thead><tr><th>Speed master</th><th>Follows</th><th>Factor</th><th title="FastSync of the phasers on this speed master, on the first beat of every 8-bar phrase">Phaser sync</th><th>BPM</th><th></th></tr></thead><tbody id="speed-rows"></tbody></table>
       <p><button id="speed-add">Add speed master</button></p>
       <table><thead><tr><th>On</th><th>Executor</th><th>Page</th><th>Beats of</th><th></th></tr></thead><tbody id="action-rows"></tbody></table>
       <p><button id="action-add">Add beat action</button></p>
-    </details>
-  </section>
-  <section>
-    <h2>MIDI</h2>
-    <div class="bar">
-      <button id="learn">Learn</button>
-      <label><input type="checkbox" id="follow" checked> new mappings follow the page</label>
-      <span id="devices" class="muted"></span>
     </div>
-    <p id="learn-hint" class="hint" hidden></p>
-    <p class="muted" id="last-input"></p>
   </section>
-  <section>
+
+  <section data-panel="mapping">
     <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
-      <h2 id="exec-title" style="margin: 0;">Executors</h2>
+      <h2 class="exec-title" style="margin: 0;">Executors</h2>
       <label class="muted"><input type="checkbox" id="empty-rows" checked> show empty rows</label>
     </div>
-    <div class="wing" id="executors"></div>
+    <div class="wing exec-bar"></div>
+    <h2 id="maps-title" style="margin-top: 20px;">Mappings</h2>
+    <table><thead><tr><th>Device</th><th>Control</th><th>Type</th><th>Executor</th><th>Page</th><th></th></tr></thead><tbody id="maps"></tbody></table>
   </section>
-  <section>
-    <details id="tc-box" open>
-      <summary>Test controller (no hardware needed)</summary>
-      <p class="muted">Works like a real controller: learn its controls, then play. Buttons show the executor colour (bright = running), faders are motorised, drag the encoders up and down.</p>
-      <div class="tc" id="tc"></div>
-    </details>
-    <details id="maps-box">
-      <summary>Mappings</summary>
-      <table><thead><tr><th>Device</th><th>Control</th><th>Type</th><th>Executor</th><th>Page</th><th></th></tr></thead><tbody id="maps"></tbody></table>
-    </details>
+
+  <section data-panel="test">
+    <p class="muted">Works like a real controller: press Learn, move a control here, then click an executor below. Buttons show the executor colour (bright = running), faders are motorised, drag the encoders up and down.</p>
+    <div class="tc" id="tc"></div>
+    <h2 class="exec-title" style="margin-top: 20px;">Executors</h2>
+    <div class="wing exec-bar"></div>
   </section>
-  <section>
-    <h2>Other sequences (seen via OSC)</h2>
+
+  <section data-panel="ma3">
+    <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
+      <h2 style="margin: 0;">Connection</h2>
+      <button id="resync" title="Ask the plugin to read the page again">Resync</button>
+    </div>
+    <table class="kv" id="ma3-conn"></table>
+    <h2 style="margin-top: 20px;">Other sequences (seen via OSC)</h2>
     <div class="grid" id="sequences"></div>
-  </section>
-  <section>
-    <h2>Masters</h2>
+    <h2 style="margin-top: 20px;">Masters</h2>
     <div class="grid" id="masters"></div>
+    <details style="margin-top: 20px;">
+      <summary>Unknown OSC addresses</summary>
+      <div id="unknown"></div>
+    </details>
   </section>
-  <details>
-    <summary>Unknown OSC addresses</summary>
-    <div id="unknown"></div>
-  </details>
+
+  <section data-panel="log">
+    <p class="muted">Since the start of Boothmate. The full log is in <code>logs/boothmate.log</code> next to the program.</p>
+    <div id="log" class="loglist"></div>
+  </section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -246,15 +351,10 @@ function seqState(s) {
 
 function render(st) {
   last = st;
-  const c = st.connections, now = Date.now();
-  const age = c.osc_last ? (now - c.osc_last) / 1000 : null;
-  $("osc-dot").className = "dot " + (c.osc_error ? "bad" : age == null ? "warn" : "ok");
-  $("osc-text").textContent = `OSC ${c.osc_listen}: ` + (c.osc_error ? c.osc_error : age == null ? "nothing received yet" : `${c.osc_packets} msgs, last ${age < 1 ? "now" : Math.round(age) + " s ago"}`);
-  $("plugin-dot").className = "dot " + (c.plugin_connected ? (c.profile_fallback ? "warn" : "ok") : "bad");
-  $("plugin-text").textContent = c.plugin_connected
-    ? `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`
-    : `Plugin ${c.plugin_addr}: ${c.plugin_error || "connecting"}`;
+  const c = st.connections;
   $("page-text").textContent = st.page != null ? `Page ${st.page}` : "";
+  const hm = st.cdj.master != null ? st.cdj.devices[st.cdj.master] : null;
+  $("hdr-bpm").innerHTML = hm && hm.bpm != null ? `<b>${hm.bpm.toFixed(2)}</b> BPM` : "";
   $("fallback").hidden = !c.profile_fallback;
   $("fallback").textContent = `No verified profile for grandMA3 ${c.ma_version}. Using ${c.profile} read-only. Add ma-profiles/<version>.toml.`;
 
@@ -270,8 +370,9 @@ function render(st) {
     const maps = st.midi.mappings.filter(m => m.exec === e.no && (m.page == null || m.page === st.page));
     execs.set(e.no, tile({ top: e.no, right: `${shortClass(e.class)} ${e.obj ?? ""}`, name: (seq && seq.name) || e.name, cue: seq ? [seq.cue, seqState(seq)].filter(Boolean).join(" · ") : (master ? master.text : e.cue), color: e.color, seq, value, exec: e.no, maps, row: Math.floor(e.no / 100) }));
   });
-  $("exec-title").textContent = st.page != null ? `Executors on page ${st.page}` : "Executors";
-  setHtml($("executors"), (execs.size ? "" : `<div class="empty" style="flex-basis: 100%">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`) + executorBar(execs));
+  document.querySelectorAll(".exec-title").forEach(h => h.textContent = st.page != null ? `Executors on page ${st.page}` : "Executors");
+  const barHtml = (execs.size ? "" : `<div class="empty" style="flex-basis: 100%">No executor data yet. Start the Lua plugin in grandMA3: <code>Plugin "boothmate"</code></div>`) + executorBar(execs);
+  document.querySelectorAll(".exec-bar").forEach(el => setHtml(el, barHtml));
 
   const seqs = Object.entries(st.sequences).filter(([no]) => !shown.has(no)).map(([no, s]) =>
     tile({ top: `Seq ${no}`, right: "", name: s.name, cue: [s.cue, seqState(s)].filter(Boolean).join(" · "), seq: s, value: s.faders.FaderMaster }));
@@ -285,6 +386,11 @@ function render(st) {
   renderMidi(st);
   renderCdj(st);
   renderTempo(st);
+  const hs = health(st);
+  renderDots(hs);
+  if (tab === "status") renderStatus(st, hs);
+  if (tab === "live") renderLive(st, hs);
+  if (tab === "ma3") renderMa3(st);
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -292,11 +398,8 @@ function render(st) {
 
 function connect() {
   const es = new EventSource("/api/events");
-  es.onmessage = e => render(JSON.parse(e.data));
-  es.onerror = () => {
-    $("osc-dot").className = $("plugin-dot").className = "dot bad";
-    $("plugin-text").textContent = "Boothmate not reachable";
-  };
+  es.onmessage = e => { $("offline").hidden = true; render(JSON.parse(e.data)); };
+  es.onerror = () => { $("offline").hidden = false; };
 }
 
 // DJ Link ---------------------------------------------------------------------------------------
@@ -314,8 +417,6 @@ function renderCdj(st) {
     : tc.streams.length ? `to ${tc.target}: ` + tc.streams.map(x => `stream ${x.id} (player ${x.player}) ${x.tc}${x.estimated ? " ~" : ""}`).join(" · ")
     : `to ${tc.target}: waiting for a playing player`;
   $("cdj-rec").textContent = c.recording ? `Stop recording (${c.recorded} packets)` : "Record";
-  $("cdj-dot").className = "dot " + (!c.enabled || c.error ? "bad" : devs.length ? "ok" : "warn");
-  $("cdj-text").textContent = !c.enabled ? "DJ Link off" : c.error ? "DJ Link: port busy" : devs.length ? `DJ Link: ${devs.length} device${devs.length > 1 ? "s" : ""}` : "DJ Link: no devices";
   const m = c.master != null ? c.devices[c.master] : null;
   const info = [];
   if (c.error) info.push(`Cannot listen: ${esc(c.error)}. Is rekordbox or another DJ Link program running on this computer?`);
@@ -376,7 +477,7 @@ function renderTempo(st) {
   tempoRules = t.rules;
   $("tempo-note").hidden = !t.note || !(t.rules.speed.length || t.rules.action.length);
   $("tempo-note").textContent = t.note || "";
-  $("tempo-box").querySelector("summary").textContent = `Tempo to grandMA3 (${t.rules.speed.length + t.rules.action.length})`;
+  $("tempo-title").textContent = `Tempo to grandMA3 (${t.rules.speed.length + t.rules.action.length})`;
   setHtml($("speed-rows"), t.rules.speed.map((l, i) => `<tr>
     <td>Master 3.<input type="number" min="1" max="99" value="${l.master}" data-k="speed" data-i="${i}" data-f="master" style="width:4em"></td>
     <td>${playerSel(i, "speed", l.player)}</td>
@@ -447,7 +548,7 @@ function renderMidi(st) {
     <td>${x.exec}</td>
     <td><select data-i="${i}" data-f="page"><option value="follow"${x.page == null ? " selected" : ""}>follow</option>${x.page != null ? `<option selected>${x.page}</option>` : ""}${st.page != null && st.page !== x.page ? `<option>${st.page}</option>` : ""}</select></td>
     <td><button data-del="${i}">Delete</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No mappings yet. Press Learn.</td></tr>`);
-  $("maps-box").querySelector("summary").textContent = `Mappings (${m.mappings.length})`;
+  $("maps-title").textContent = `Mappings (${m.mappings.length})`;
 
   const fb = m.feedback.test || {};
   for (let i = 1; i <= 8; i++) {
@@ -506,18 +607,192 @@ function buildTestController() {
 }
 
 $("learn").onclick = () => post("/api/midi/learn", { on: !(last && last.midi.learn), follow: $("follow").checked });
-$("executors").onclick = e => {
-  const t = e.target.closest("[data-exec]");
+document.addEventListener("click", e => {
+  const t = e.target.closest(".exec-bar [data-exec]");
   if (t && picking()) post("/api/midi/assign", { exec: +t.dataset.exec });
-};
+});
 $("maps").onchange = e => {
   const s = e.target, i = +s.dataset.i, f = s.dataset.f;
   if (f === "page") post("/api/midi/mapping", s.value === "follow" ? { index: i, follow: true } : { index: i, page: +s.value });
   else post("/api/midi/mapping", { index: i, [f]: s.value });
 };
 $("maps").onclick = e => { const b = e.target.closest("[data-del]"); if (b) post("/api/midi/mapping", { index: +b.dataset.del, delete: true }); };
+// Tabs -------------------------------------------------------------------------------------------
+const TABS = ["status", "live", "cdj", "mapping", "test", "ma3", "log"];
+let tab = "status";
+function showTab(t) {
+  if (!TABS.includes(t)) t = "status";
+  tab = t;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("sel", b.dataset.tab === t));
+  document.querySelectorAll("[data-panel]").forEach(p => p.classList.toggle("show", p.dataset.panel === t));
+  $("learnbar").hidden = !(t === "mapping" || t === "test");
+  try { localStorage.setItem("boothmate.tab", t); } catch (e) {}
+  if (location.hash !== "#" + t) history.replaceState(null, "", "#" + t);
+  if (last) render(last);
+}
+$("tabs").onclick = e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); };
+window.onhashchange = () => showTab(location.hash.slice(1));
+
+// Health: one entry per connection, shared by the status tab, the tab dots and the live view. -----
+const RANK = { off: 0, ok: 1, warn: 2, bad: 3 };
+const worst = list => list.reduce((a, h) => RANK[h.level] > RANK[a] ? h.level : a, "ok");
+const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 2 ? "now" : s < 120 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; };
+
+function health(st) {
+  const c = st.connections, m = st.midi, cdj = st.cdj, t = st.tempo, tc = st.timecode;
+  const out = [];
+  out.push(c.plugin_connected
+    ? { key: "ma3", name: "grandMA3", tab: "ma3", level: c.profile_fallback ? "warn" : "ok",
+        detail: `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`,
+        hint: c.profile_fallback ? `No verified profile for this version: read-only. Add ma-profiles/<version>.toml.` : (st.page != null ? `Page ${st.page}` : "") }
+    : { key: "ma3", name: "grandMA3", tab: "ma3", level: "bad", detail: `Plugin ${c.plugin_addr}: ${c.plugin_error || "connecting"}`,
+        hint: `Start the plugin in grandMA3: Plugin "boothmate"` });
+  const age = c.osc_last ? Date.now() - c.osc_last : null;
+  out.push(c.osc_error
+    ? { key: "oscin", name: "OSC from grandMA3", tab: "ma3", level: "bad", detail: c.osc_error, hint: "Switch the OSC line's Enable Output off and on again." }
+    : age == null
+      ? { key: "oscin", name: "OSC from grandMA3", tab: "ma3", level: "warn", detail: `${c.osc_listen}: nothing received yet`, hint: "OSC line to this port with Send = Yes and Enable Output on." }
+      : { key: "oscin", name: "OSC from grandMA3", tab: "ma3", level: "ok", detail: `${c.osc_listen} · ${c.osc_packets} messages`, hint: `Last message ${ago(c.osc_last)}` });
+  out.push({ key: "oscout", name: "OSC to grandMA3", tab: "ma3", level: "off", detail: c.osc_send || "–", hint: "Keys and faders go here: an OSC line with Receive = Yes. Not checked." });
+  const devs = m.devices.filter(d => d.port !== "test");
+  const known = id => id === "test" || m.devices.some(d => d.id === id || d.name === id || d.port === id);
+  const missing = [...new Set(m.mappings.map(x => x.device).filter(id => !known(id)))];
+  out.push(missing.length
+    ? { key: "midi", name: "MIDI", tab: "mapping", level: "bad", detail: `${missing.join(", ")} not connected · ${m.mappings.length} mappings`, hint: "Plug it in. Boothmate looks for it every 2 seconds." }
+    : m.error
+      ? { key: "midi", name: "MIDI", tab: "mapping", level: "warn", detail: m.error, hint: "" }
+      : devs.length
+        ? { key: "midi", name: "MIDI", tab: "mapping", level: "ok", detail: devs.map(d => d.name).join(", "), hint: `${m.mappings.length} mappings` }
+        : { key: "midi", name: "MIDI", tab: "mapping", level: "off", detail: "No controller connected", hint: m.mappings.length ? `${m.mappings.length} mappings (test controller)` : "Nothing mapped yet" });
+  const cdevs = Object.values(cdj.devices), players = cdevs.filter(d => d.kind !== "mixer");
+  const mas = cdj.master != null ? cdj.devices[cdj.master] : null;
+  out.push(!cdj.enabled
+    ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "off", detail: "Switched off (cdj.enabled)", hint: "" }
+    : cdj.error
+      ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "bad", detail: cdj.error, hint: "Is rekordbox or another DJ Link program running on this computer?" }
+      : !cdevs.length
+        ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "warn", detail: "No players or mixers found", hint: "Connect this computer to the DJ Link switch or mixer." }
+        : { key: "cdj", name: "DJ Link", tab: "cdj", level: "ok", detail: `${cdj.interface ? cdj.interface + " · " : ""}${players.length} player${players.length === 1 ? "" : "s"}${cdevs.length > players.length ? `, ${cdevs.length - players.length} mixer` : ""}${cdj.simulator ? " (simulator)" : ""}`,
+            hint: mas ? `Tempo master: player ${mas.number}${mas.bpm != null ? `, ${mas.bpm.toFixed(2)} BPM` : ""}` : "No tempo master" });
+  const rules = t.rules.speed.length + t.rules.action.length;
+  const tcText = tc.on ? (tc.streams.length ? `timecode ${tc.streams.length} stream${tc.streams.length > 1 ? "s" : ""}` : "timecode waiting") : "";
+  const sent = Object.entries(t.sent).map(([k, v]) => `Speed 3.${k} = ${v.toFixed(2)} BPM`).join(" · ");
+  out.push(tc.error
+    ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "bad", detail: tc.error, hint: "Check [timecode] target in boothmate.toml." }
+    : t.note && rules
+      ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "warn", detail: t.note, hint: "" }
+      : rules || tc.on
+        ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "ok", detail: [sent || `${rules} rule${rules === 1 ? "" : "s"}`, tcText].filter(Boolean).join(" · "), hint: t.rules.action.length ? `${t.rules.action.length} beat actions` : "" }
+        : { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "off", detail: "Nothing linked", hint: "Speed masters, beat actions and timecode are set up in the CDJs tab." });
+  return out;
+}
+
+const LEVEL_TEXT = { ok: "OK", warn: "Check", bad: "Problem", off: "–" };
+function renderStatus(st, hs) {
+  const probs = hs.filter(h => h.level === "bad" || h.level === "warn");
+  const lv = worst(hs);
+  const first = probs.find(h => h.level === "bad") || probs[0];
+  setHtml($("summary"), `<span class="dot ${lv}"></span><div><b>${probs.length ? `${probs.length} problem${probs.length > 1 ? "s" : ""}, everything else is running` : "Everything is running"}</b>
+    <span>${first ? `${esc(first.name)}: ${esc(first.detail)}. ${esc(first.hint)}` : "grandMA3, OSC, MIDI and DJ Link look fine."}</span></div>`);
+  $("summary").className = "summary " + (lv === "off" ? "ok" : lv);
+  setHtml($("health"), hs.map(h => `<a class="htile" href="#${h.tab}"><div class="t"><span class="dot ${h.level}"></span><b>${esc(h.name)}</b><em class="lv-${h.level}">${LEVEL_TEXT[h.level]}</em></div>
+    <div class="d">${esc(h.detail)}</div>${h.hint ? `<div class="h">${esc(h.hint)}</div>` : ""}</a>`).join(""));
+  const devs = Object.values(st.cdj.devices).filter(d => d.kind !== "mixer");
+  setHtml($("status-players"), devs.length ? devs.map(d => cdjCard(d, st.cdj.master)).join("") : `<div class="empty">No players.</div>`);
+}
+
+function renderDots(hs) {
+  const by = k => hs.find(h => h.key === k).level;
+  const set = (id, lv) => { $(id).className = "dot " + lv; };
+  set("dot-status", worst(hs));
+  set("dot-cdj", worst(hs.filter(h => h.key === "cdj" || h.key === "tempo")));
+  set("dot-mapping", by("midi"));
+  set("dot-ma3", worst(hs.filter(h => h.key === "ma3" || h.key === "oscin")));
+}
+
+// Live view: the tempo master large, the other players beside it. ---------------------------------
+function renderLive(st, hs) {
+  const c = st.cdj, players = Object.values(c.devices).filter(d => d.kind !== "mixer");
+  const m = (c.master != null && c.devices[c.master]) || players.find(d => d.playing) || null;
+  let main;
+  if (!m) {
+    main = `<div class="lv-main nomaster"><div class="lv-empty">No tempo master yet. Waiting for CDJs${c.simulator ? "" : " (or press Simulator in the CDJs tab)"}.</div></div>`;
+  } else {
+    const bb = m.beat_in_bar;
+    const b4 = [1, 2, 3, 4].map(i => `<i class="${i === bb ? "on" + (i === 1 ? " down" : "") : bb && i < bb ? "past" : ""}"></i>`).join("");
+    const b8 = range(1, 8).map(i => `<i class="${m.bar_in_8 && i <= m.bar_in_8 ? "on" : ""}"></i>`).join("");
+    const pos = m.position_ms != null && m.track_len_s ? `${mmss(m.position_ms)} / ${mmss(m.track_len_s * 1000)}` : "";
+    const pitch = m.pitch ? `${m.pitch > 0 ? "+" : ""}${m.pitch.toFixed(2)} %` : "+0.00 %";
+    const toPhrase = m.beat != null && bb ? (8 - (m.bar_in_8 || 1)) * 4 + (4 - bb) + 1 : null;
+    const next = m.beats_to_cue != null ? `<span>Cue</span><b>in ${m.beats_to_cue} beats</b>`
+      : toPhrase != null ? `<span>Next phrase</span><b>in ${toPhrase} beat${toPhrase === 1 ? "" : "s"}</b>` : "";
+    main = `<div class="lv-main${c.master === m.number ? "" : " nomaster"}">
+      <div class="lv-head">${c.master === m.number ? `<span class="lv-tag">MASTER</span>` : ""}<strong>Player ${m.number}</strong><span class="m">${esc(m.name)}</span><span class="pos">${pos}</span></div>
+      <div class="lv-row">
+        <div><div class="lv-bpm">${m.bpm != null ? m.bpm.toFixed(2) : "&ndash;"}</div><div class="lv-sub">BPM · pitch ${pitch}${m.playing ? "" : " · " + esc(m.play_state || "stopped")}</div></div>
+        <div class="lv-beats"><div class="b4" role="img" aria-label="Beat ${bb || "-"} of 4">${b4}</div><div class="b8" title="Bar in the 8-bar phrase grid">${b8}</div>
+          <div class="txt"><span>${m.bar != null ? `Bar ${m.bar}` : ""}</span><span>${m.bar_in_8 ? `Phrase bar ${m.bar_in_8} / 8` : ""}</span></div></div>
+      </div>
+      ${next ? `<div class="lv-next">${next}</div>` : ""}
+      ${timeline(m)}
+    </div>`;
+  }
+  const others = players.filter(d => d !== m).map(d => `<div class="lv-other${d.playing ? " playing" : ""}">
+      <div><strong style="font-size:20px">Player ${d.number}</strong> <span class="muted">${esc(d.name)}</span></div>
+      <div class="bpm">${d.bpm != null ? d.bpm.toFixed(2) : "&ndash;"}</div>
+      <div class="muted">${[d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "", d.play_state, d.on_air ? "on air" : ""].filter(Boolean).map(esc).join(" · ")}</div>
+    </div>`).join("");
+  const tcs = st.timecode.on && st.timecode.streams.length ? `<div class="lv-other"><span class="muted">Timecode</span>${st.timecode.streams.map(s => `<div style="font-variant-numeric: tabular-nums">Stream ${s.id} · ${s.tc}${s.estimated ? " ~" : ""}</div>`).join("")}</div>` : "";
+  const probs = hs.filter(h => h.level === "bad" || h.level === "warn");
+  const first = probs.find(h => h.level === "bad") || probs[0];
+  const strip = `<a class="lv-health" href="#status">${hs.filter(h => h.level !== "off").map(h => `<span><span class="dot ${h.level}"></span>${esc(h.name)}</span>`).join("")}
+    <span class="msg ${first ? "lv-" + first.level : "lv-ok"}">${first ? `${esc(first.name)}: ${esc(first.detail)} · details` : "All good"}</span></a>`;
+  setHtml($("live"), `<div class="lv-wrap">${main}${others || tcs ? `<div class="lv-side">${others}${tcs}</div>` : ""}</div>${strip}`);
+}
+
+// Track timeline: playhead and the 32-beat phrase grid. Waveform and real phrases need track data.
+function timeline(d) {
+  if (d.position_ms == null || !d.track_len_s) return `<div class="lv-time"><span class="note">Timeline: needs position data (CDJ-3000). Waveform and phrases come with the track data.</span></div>`;
+  const len = d.track_len_s * 1000, p = Math.min(100, d.position_ms / len * 100);
+  let ticks = "";
+  if (d.track_bpm) { const step = 32 * 60000 / d.track_bpm; for (let t = step; t < len; t += step) ticks += `<i class="tick" style="left:${(t / len * 100).toFixed(2)}%"></i>`; }
+  return `<div class="lv-time"><i class="done" style="width:${p.toFixed(2)}%"></i>${ticks}<i class="head" style="left:${p.toFixed(2)}%"></i><span class="note">Lines: every 32 beats from the track start. Waveform and phrases come with the track data.</span></div>`;
+}
+
+// grandMA3 connection details --------------------------------------------------------------------
+function renderMa3(st) {
+  const c = st.connections;
+  const rows = [
+    ["Plugin", c.plugin_connected ? `connected to ${c.plugin_addr}` : `${c.plugin_addr}: ${c.plugin_error || "connecting"}`],
+    ["grandMA3", c.ma_version || "–"], ["Plugin version", c.plugin_version || "–"],
+    ["Profile", c.profile + (c.profile_fallback ? " (read-only fallback)" : "")],
+    ["OSC in", `${c.osc_listen}: ${c.osc_error || `${c.osc_packets} messages${c.osc_last ? ", last " + ago(c.osc_last) : ""}`}`],
+    ["OSC out", c.osc_send || "–"], ["Page", st.page ?? "–"],
+  ];
+  setHtml($("ma3-conn"), rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join(""));
+}
+
+// Log -------------------------------------------------------------------------------------------
+let logLines = [], logSeq = 0;
+const hms = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const logRow = l => `<div class="${l.level}"><time>${hms(l.t)}</time><span>${esc(l.msg)}</span></div>`;
+async function pollLog() {
+  try {
+    const r = await fetch("/api/log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ after: logSeq }) });
+    const lines = await r.json();
+    if (lines.length) { logLines = logLines.concat(lines).slice(-300); logSeq = lines.at(-1).seq; }
+  } catch (e) { return; }
+  setHtml($("log"), logLines.slice().reverse().map(logRow).join("") || `<div class="muted">Nothing yet.</div>`);
+  setHtml($("status-log"), logLines.slice(-6).reverse().map(logRow).join("") || `<div class="muted">Nothing yet.</div>`);
+}
+
 buildTestController();
+let startTab = location.hash.slice(1);
+try { startTab = startTab || localStorage.getItem("boothmate.tab"); } catch (e) {}
+showTab(startTab || "status");
 setInterval(() => last && render(last), 1000);
+pollLog();
+setInterval(pollLog, 2000);
 try { $("empty-rows").checked = localStorage.getItem("boothmate.emptyRows") !== "0"; } catch {}
 $("empty-rows").onchange = () => { try { localStorage.setItem("boothmate.emptyRows", $("empty-rows").checked ? "1" : "0"); } catch {} last && render(last); };
 $("resync").onclick = () => fetch("/api/resync", { method: "POST" });

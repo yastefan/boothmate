@@ -68,6 +68,8 @@ pub struct Master {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Connections {
     pub osc_listen: String,
+    /// Where executor keys and faders go (grandMA3's OSC input line).
+    pub osc_send: String,
     pub osc_error: Option<String>,
     pub osc_packets: u64,
     pub osc_last: Option<u64>,

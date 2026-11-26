@@ -145,7 +145,13 @@ fn scan(opts: &Options, ports: &mut BTreeMap<String, Port>, events: &UnboundedSe
         .unwrap_or_default();
 
     // Unplugged: close.
-    ports.retain(|name, _| name == VIRTUAL || inputs.contains(name));
+    ports.retain(|name, _| {
+        let keep = name == VIRTUAL || inputs.contains(name);
+        if !keep {
+            crate::log::info(&format!("MIDI: input {name} gone"));
+        }
+        keep
+    });
     for name in &inputs {
         if !ports.contains_key(name) {
             match connect_input(name, events) {

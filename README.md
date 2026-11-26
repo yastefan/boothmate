@@ -26,23 +26,25 @@ Boothmate wants to solve both in one small, robust tool:
 3. Import the plugin from `lua/boothmate.xml` into your show and start it with `Plugin "boothmate"`.
 4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
 
+The web page opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, Test controller, grandMA3 and Log.
+
 ## MIDI controllers
 
-Plug in the controller, then press **Learn** in the web page, move a control, and click an executor (or press its key in grandMA3). Repeat for more controls, then stop learning. Buttons light up in the executor's appearance colour (bright = running, dim = assigned), motor faders and LED rings follow the fader. Mappings follow the current page unless you set a fixed page; they are saved in `midi.toml`.
+Plug in the controller, then press **Learn** in the MIDI & Mapping tab, move a control, and click an executor (or press its key in grandMA3). Repeat for more controls, then stop learning. Buttons light up in the executor's appearance colour (bright = running, dim = assigned), motor faders and LED rings follow the fader. Mappings follow the current page unless you set a fixed page; they are saved in `midi.toml`.
 
-Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Use the test controller in the web page. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
+Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Use the Test controller tab. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
 
 ## CDJs (Pro DJ Link)
 
-Connect the computer to the DJ Link network (the switch, or a LAN port of the mixer). Boothmate finds players and mixers by itself and shows them in the web page: BPM, pitch, beat in bar, bar and 4/8-bar position, play state, tempo master, on-air and the loaded track. It only reads: it never browses media, loads tracks or controls a player.
+Connect the computer to the DJ Link network (the switch, or a LAN port of the mixer). Boothmate finds players and mixers by itself and shows them in the CDJs tab: BPM, pitch, beat in bar, bar and 4/8-bar position, play state, tempo master, on-air and the loaded track. It only reads: it never browses media, loads tracks or controls a player.
 
-To get play state and beat numbers, Boothmate announces itself as a silent virtual player with device number 7 (`cdj.player` in `boothmate.toml`), so it never takes a player's number. Without this (`cdj.status = false`), it still reads BPM and beats. rekordbox on the same computer blocks the status port. No CDJs at hand? Press **Simulator** in the web page.
+To get play state and beat numbers, Boothmate announces itself as a silent virtual player with device number 7 (`cdj.player` in `boothmate.toml`), so it never takes a player's number. Without this (`cdj.status = false`), it still reads BPM and beats. rekordbox on the same computer blocks the status port. No CDJs at hand? Press **Simulator** in the CDJs tab.
 
-**Tempo to grandMA3** (in the DJ Link section): link speed masters to the CDJs. Speed master 3.1 then follows the tempo master's BPM exactly, also when the master moves to another player, optionally at half or double time and with a phaser sync at the start of each phrase. Beat actions press an executor on every beat, bar, 4 bars, phrase, track change or master change. Needs the plugin (version 0.2.0 or later: re-import `lua/boothmate.xml`). Saved in `tempo.toml`.
+**Tempo to grandMA3** (in the CDJs tab): link speed masters to the CDJs. Speed master 3.1 then follows the tempo master's BPM exactly, also when the master moves to another player, optionally at half or double time and with a phaser sync at the start of each phrase. Beat actions press an executor on every beat, bar, 4 bars, phrase, track change or master change. Needs the plugin (version 0.2.0 or later: re-import `lua/boothmate.xml`). Saved in `tempo.toml`.
 
-**Timecode (experimental):** the **Timecode** button in the DJ Link section sends the playhead of the CDJs as Art-Net timecode (ArtTimeCode) to grandMA3: stream 0 follows the tempo master, stream n player n, only while playing. In grandMA3, set a timecode slot to Art-Net input and point a timecode show at that slot. CDJ-3000s send their exact position; older players are estimated from the beat number (shown with `~`). Target and frame rate are in `boothmate.toml` under `[timecode]`.
+**Timecode (experimental):** the **Timecode** button in the CDJs tab sends the playhead of the CDJs as Art-Net timecode (ArtTimeCode) to grandMA3: stream 0 follows the tempo master, stream n player n, only while playing. In grandMA3, set a timecode slot to Art-Net input and point a timecode show at that slot. CDJ-3000s send their exact position; older players are estimated from the beat number (shown with `~`). Target and frame rate are in `boothmate.toml` under `[timecode]`.
 
-**Record** in the web page saves the DJ Link traffic to `logs/djlink-*.pcap`. `boothmate --replay <file>` plays such a recording back as if the players were there, and `boothmate --check <file>` shows what Boothmate understood. Before a first test with real players, see [docs/club-checklist.md](docs/club-checklist.md).
+**Record** in the CDJs tab saves the DJ Link traffic to `logs/djlink-*.pcap`. `boothmate --replay <file>` plays such a recording back as if the players were there, and `boothmate --check <file>` shows what Boothmate understood. Before a first test with real players, see [docs/club-checklist.md](docs/club-checklist.md).
 
 ## Notes
 
