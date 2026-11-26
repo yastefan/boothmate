@@ -34,6 +34,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/timecode", post(set_timecode))
         .route("/api/log", post(recent_log))
         .route("/api/modules", post(set_modules))
+        .route("/api/plugin", get(plugin_info))
+        .route("/api/plugin/install", post(install_plugin))
         .with_state(app)
 }
 
@@ -154,6 +156,24 @@ async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl Into
 async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
     app.update(|st| st.cdj.record = r.on);
     "ok"
+}
+
+/// The bundled plugin version and the grandMA3 libraries it can be copied to.
+async fn plugin_info(Ax(app): Ax<Arc<App>>) -> impl IntoResponse {
+    Json(crate::setup::plugin_info(&app.dir))
+}
+
+#[derive(Deserialize)]
+struct InstallReq {
+    library: String,
+}
+
+/// Copies the plugin into a grandMA3 library.
+async fn install_plugin(Ax(app): Ax<Arc<App>>, Json(r): Json<InstallReq>) -> impl IntoResponse {
+    match crate::setup::install(&app.dir, &r.library) {
+        Ok(m) => (StatusCode::OK, m),
+        Err(e) => (StatusCode::BAD_REQUEST, e),
+    }
 }
 
 #[derive(Deserialize)]
