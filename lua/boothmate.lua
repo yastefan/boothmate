@@ -494,13 +494,18 @@ local function selfUpdate(msg)
   end
   local start = 'Plugin "boothmate"' .. (args ~= "" and (' "' .. args .. '"') or "")
   local n = updateMacroSlot()
-  storeMacro(n, {
-    { "Echo Boothmate: updating the plugin to " .. version, "1.5" },
+  local okM, errM = pcall(storeMacro, n, {
+    -- Quoted: grandMA3 parses a macro line again and would turn "plugin to" into keywords.
+    { 'Echo "Boothmate: updating the plugin to ' .. version .. '"', "1.5" },
     { string.format("Delete Plugin %d /NoConfirmation", slot), "1" },
     { string.format('Import Plugin Library "%s" At Plugin %d', UPDATE_FILES.xml, slot), "1" },
     { "ReloadAllPlugins", "2" },
     { start, "Follow" },
   })
+  if not okM then
+    pcall(deleteMacro, n)
+    error(errM, 0)
+  end
   log("updating to %s: files in %s, Macro %d replaces Plugin %d", version, dir, n, slot)
   return n
 end
