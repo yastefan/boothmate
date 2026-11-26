@@ -36,6 +36,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/modules", post(set_modules))
         .route("/api/plugin", get(plugin_info))
         .route("/api/plugin/install", post(install_plugin))
+        .route("/api/ma3/setup", post(ma3_setup))
         .with_state(app)
 }
 
@@ -161,6 +162,20 @@ async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoRe
 /// The bundled plugin version and the grandMA3 libraries it can be copied to.
 async fn plugin_info(Ax(app): Ax<Arc<App>>) -> impl IntoResponse {
     Json(crate::setup::plugin_info(&app.dir))
+}
+
+#[derive(Deserialize)]
+struct SetupReq {
+    #[serde(default)]
+    apply: bool,
+}
+
+/// Reads the OSC and Art-Net setup in grandMA3 again, or fixes it (through the plugin).
+async fn ma3_setup(Ax(app): Ax<Arc<App>>, Json(r): Json<SetupReq>) -> impl IntoResponse {
+    match crate::plugin::request_setup(&app, r.apply) {
+        Ok(()) => (StatusCode::OK, "ok".to_string()),
+        Err(e) => (StatusCode::CONFLICT, e),
+    }
 }
 
 #[derive(Deserialize)]

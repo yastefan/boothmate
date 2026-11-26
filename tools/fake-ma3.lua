@@ -65,8 +65,36 @@ GetExecutor = function(n)
   if obj then return { Object = obj }, pages[currentPage] end
 end
 CurrentExecPage = function() return pages[currentPage] end
+-- Setup objects: a collection with Children/Count/Append/Remove; Get/Set by property name.
+local function item(class, props)
+  local o = props or {}
+  function o:GetClass() return class end
+  function o:Get(p) return self[p] end
+  function o:Set(p, v) self[p] = tostring(v) end
+  return o
+end
+local function collection(class, childClass, defaults, items)
+  local c = item(class, {})
+  c.items = items or {}
+  function c:Children() local t = {}; for i, v in ipairs(self.items) do t[i] = v end; return t end
+  function c:Count() return #self.items end
+  function c:Append()
+    local o = item(childClass, {}); for k, v in pairs(defaults) do o[k] = v end
+    self.items[#self.items + 1] = o; return o
+  end
+  function c:Remove(i) table.remove(self.items, i) end
+  return c
+end
+local oscDefaults = { Name = "OSCData", Mode = "UDP", Port = "8000", DestinationIP = "10.1.255.255", Prefix = "", Send = "No", Receive = "No" }
+local oscBase = collection("OSCBase", "OSCData", oscDefaults, {})
+oscBase.EnableInput, oscBase.EnableOutput = "Yes", "No"
+local l1 = oscBase:Append(); l1.Name = "OSCData 1"; l1.Receive = "Yes"; l1.DestinationIP = "127.0.0.1"
+local artTc = collection("ArtNetTimecodeCollect", "Art-Net-Timecode", { Enabled = "No", Mode = "Output", StreamID = "0", TimecodeSlot = "1" }, {})
+local artNet = item("ArtNet", { In = "No", ArtNetTimecodeCollect = artTc })
+Root = function() return { DeviceConfigurations = { DMXProtocols = { ArtNet = artNet } } } end
+
 DataPool = function() return { Sequences = object("Pool", "14.14.1.7", {}) } end
-ShowData = function() return { Appearances = object("Pool", "14.6", {}) } end
+ShowData = function() return { Appearances = object("Pool", "14.6", {}), OSCBase = oscBase } end
 Version = function() return "2.5.1.1" end
 Printf = function(s) print(s) end
 Enums = { Roles = { Display = 1 } }

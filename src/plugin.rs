@@ -28,6 +28,30 @@ pub enum Event {
     Error {
         msg: String,
     },
+    Setup(crate::setup::Report),
+}
+
+/// Asks the plugin for the OSC and Art-Net setup (plugin 0.3.0+), or to fix it.
+pub fn request_setup(app: &App, apply: bool) -> Result<(), String> {
+    let st = app.state.lock().unwrap();
+    if !st.connections.plugin_connected {
+        return Err("The plugin is not connected.".into());
+    }
+    if !st.ma3_setup.supported {
+        return Err(format!(
+            "Needs plugin {} or later: copy the new plugin in the grandMA3 tab and import it again.",
+            crate::setup::SETUP_PLUGIN
+        ));
+    }
+    let n = crate::setup::needs(&app.config, st.timecode.on);
+    drop(st);
+    let op = if apply {
+        crate::setup::apply_op(&n)
+    } else {
+        json!({ "op": "setup" })
+    };
+    let _ = app.plugin_ops.send(op.to_string());
+    Ok(())
 }
 
 pub async fn run(app: Arc<App>) {
@@ -115,7 +139,12 @@ fn handle_line(app: &Arc<App>, line: &str) {
                 ));
             }
             *app.profile.write().unwrap() = p.clone();
+            let supported = crate::tempo::version_at_least(&plugin, crate::setup::SETUP_PLUGIN);
             app.update(|st| {
+                st.ma3_setup = crate::setup::Ma3Setup {
+                    supported,
+                    ..Default::default()
+                };
                 st.connections.plugin_connected = true;
                 st.connections.plugin_error = None;
                 st.connections.plugin_version = Some(plugin);
@@ -123,6 +152,9 @@ fn handle_line(app: &Arc<App>, line: &str) {
                 st.connections.profile = p.id.clone();
                 st.connections.profile_fallback = fit == Fit::Fallback;
             });
+            if supported {
+                let _ = app.plugin_ops.send(json!({ "op": "setup" }).to_string());
+            }
         }
         Event::Page { page, executors } => {
             crate::log::debug(&format!(
@@ -130,6 +162,19 @@ fn handle_line(app: &Arc<App>, line: &str) {
                 executors.len()
             ));
             app.update(|st| st.apply_page(page, executors));
+        }
+        Event::Setup(r) => {
+            let timecode_on = app.state.lock().unwrap().timecode.on;
+            let checks = crate::setup::checks(&r, &crate::setup::needs(&app.config, timecode_on));
+            app.update(|st| {
+                let s = &mut st.ma3_setup;
+                if !r.changes.is_empty() {
+                    s.changes = r.changes.clone();
+                }
+                s.checks = checks;
+                s.report = Some(r);
+                s.updated = Some(crate::state::now_ms());
+            });
         }
         Event::Error { msg } => {
             crate::log::warn(&format!("plugin: {msg}"));

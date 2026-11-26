@@ -97,6 +97,7 @@ pub struct State {
     pub tempo: crate::tempo::TempoState,
     pub timecode: crate::timecode::TimecodeState,
     pub modules: Modules,
+    pub ma3_setup: crate::setup::Ma3Setup,
 }
 
 /// Parts of Boothmate that can be switched off. Off means no threads, sockets or timers.

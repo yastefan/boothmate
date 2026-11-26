@@ -248,6 +248,16 @@ impl Engine {
 }
 
 /// Speed and phase messages need plugin 0.2.0 or later.
+/// `version` (a.b.c) is `min` or later.
+pub fn version_at_least(version: &str, min: &str) -> bool {
+    let parse = |v: &str| -> Vec<u32> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
+    let (a, b) = (parse(version), parse(min));
+    (0..3)
+        .map(|i| a.get(i).copied().unwrap_or(0))
+        .cmp((0..3).map(|i| b.get(i).copied().unwrap_or(0)))
+        != std::cmp::Ordering::Less
+}
+
 pub fn plugin_supports_speed(version: &str) -> bool {
     let mut parts = version.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
     let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));

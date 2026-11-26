@@ -20,11 +20,9 @@ Boothmate wants to solve both in one small, robust tool:
 ## Usage
 
 1. Download `Boothmate-mac.zip` or `Boothmate-win.zip` from the [build runs](https://github.com/yastefan/boothmate/actions/workflows/build.yml) or releases and unpack the `Boothmate` folder, for example next to your show files on a USB stick.
-2. In grandMA3 (Menu > In & Out > OSC), add two OSC lines, both UDP with destination `127.0.0.1`, and switch on **Enable Output** and **Enable Input**:
-   - port `9001`, **Send = Yes** (feedback to Boothmate),
-   - port `8000`, **Receive = Yes** (keys and faders from Boothmate).
-3. Import the plugin into your show and start it with `Plugin "boothmate"`. The easy way: start Boothmate first and press **Copy plugin** in its grandMA3 tab. It puts the plugin into the grandMA3 library of this computer (onPC) or of the stick Boothmate runs from, so the Plugin pool's Import finds it. Or import `lua/boothmate.xml` from the Boothmate folder.
-4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
+2. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
+3. Import the plugin into your show and start it with `Plugin "boothmate"`. The easy way: press **Copy plugin** in its grandMA3 tab. It puts the plugin into the grandMA3 library of this computer (onPC) or of the stick Boothmate runs from, so the Plugin pool's Import finds it. Or import `lua/boothmate.xml` from the Boothmate folder.
+4. Press **Set up in grandMA3** in the grandMA3 tab (plugin 0.3.0 or later). The plugin adds or fixes the two OSC lines and, if timecode is on, the Art-Net timecode input; it never removes anything. By hand: in Menu > In & Out > OSC add two OSC lines, both UDP with destination `127.0.0.1`, with **Enable Output** and **Enable Input** on: port `9001` with **Send = Yes** (feedback to Boothmate) and port `8000` with **Receive = Yes** (keys and faders from Boothmate).
 
 The web page opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, grandMA3 and Log; Live is the last tab.
 

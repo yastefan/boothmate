@@ -173,6 +173,9 @@
   .modbar h2 { margin: 0; }
   button.switch { min-height: 32px; padding: 0 14px; }
   button.switch.on { background: #1d3a2a; border-color: #2f6b47; color: #9ff0bf; }
+  .checks { display: flex; flex-direction: column; gap: 6px; }
+  .checks div { display: flex; gap: 10px; align-items: baseline; }
+  .checks b { font-weight: 600; min-width: 290px; }
   .lv-empty { color: var(--muted); font-size: 18px; padding: 40px 0; text-align: center; }
 </style>
 </head>
@@ -277,6 +280,13 @@
       <button id="resync" title="Ask the plugin to read the page again">Resync</button>
     </div>
     <table class="kv" id="ma3-conn"></table>
+    <div class="bar" style="justify-content: space-between; margin: 20px 0 8px;">
+      <h2 style="margin: 0;">Setup in grandMA3</h2>
+      <div class="bar"><button id="setup-check">Check again</button><button id="setup-apply">Set up in grandMA3</button></div>
+    </div>
+    <p class="muted" style="margin-top: 0;">OSC lines Boothmate needs, and the Art-Net timecode input when timecode is on. "Set up" adds or fixes only these and never removes anything. Save the show in grandMA3 afterwards.</p>
+    <div id="setup-checks" class="checks"></div>
+    <p id="setup-msg" class="hint" hidden></p>
     <h2 style="margin-top: 20px;">Plugin</h2>
     <p id="plugin-ver"></p>
     <table id="plugin-libs"></table>
@@ -407,7 +417,7 @@ function render(st) {
   renderDots(hs);
   if (tab === "status") renderStatus(st, hs);
   if (tab === "live") renderLive(st, hs);
-  if (tab === "ma3") { renderMa3(st); renderPlugin(st); }
+  if (tab === "ma3") { renderMa3(st); renderSetup(st); renderPlugin(st); }
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -646,7 +656,7 @@ function showTab(t) {
   $("learnbar").hidden = t !== "mapping" || !(last && last.modules.midi);
   try { localStorage.setItem("boothmate.tab", t); } catch (e) {}
   if (location.hash !== "#" + t) history.replaceState(null, "", "#" + t);
-  if (t === "ma3") loadPlugin();
+  if (t === "ma3") { loadPlugin(); if (last && last.ma3_setup.supported) setupReq(false); }
   if (last) render(last);
 }
 $("tabs").onclick = e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); };
@@ -693,6 +703,8 @@ function health(st) {
     : age == null
       ? { key: "oscin", name: "OSC from grandMA3", tab: "ma3", level: "warn", detail: `${c.osc_listen}: nothing received yet`, hint: "OSC line to this port with Send = Yes and Enable Output on." }
       : { key: "oscin", name: "OSC from grandMA3", tab: "ma3", level: "ok", detail: `${c.osc_listen} · ${c.osc_packets} messages`, hint: `Last message ${ago(c.osc_last)}` });
+  const failed = st.ma3_setup.checks.filter(k => !k.ok);
+  if (failed.length) out.push({ key: "setup", name: "grandMA3 setup", tab: "ma3", level: "warn", detail: failed.map(k => k.label + ": " + k.detail).join(" · "), hint: "Fix it with Set up in grandMA3 (grandMA3 tab)." });
   out.push({ key: "oscout", name: "OSC to grandMA3", tab: "ma3", level: "off", detail: c.osc_send || "–", hint: "Keys and faders go here: an OSC line with Receive = Yes. Not checked." });
   const devs = m.devices.filter(d => d.port !== "test");
   const known = id => id === "test" || m.devices.some(d => d.id === id || d.name === id || d.port === id);
@@ -751,7 +763,7 @@ function renderDots(hs) {
   set("dot-status", worst(hs));
   set("dot-cdj", worst(hs.filter(h => h.key === "cdj" || h.key === "tempo")));
   set("dot-mapping", by("midi"));
-  set("dot-ma3", worst(hs.filter(h => h.key === "ma3" || h.key === "oscin")));
+  set("dot-ma3", worst(hs.filter(h => h.key === "ma3" || h.key === "oscin" || h.key === "setup")));
 }
 
 // Live view: the tempo master large, the other players beside it. ---------------------------------
@@ -817,6 +829,32 @@ function renderMa3(st) {
   ];
   setHtml($("ma3-conn"), rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join(""));
 }
+
+// grandMA3 setup through the plugin ---------------------------------------------------------------
+function renderSetup(st) {
+  const s = st.ma3_setup, c = st.connections;
+  let html;
+  if (!c.plugin_connected) html = `<div class="muted">Start the plugin in grandMA3 first.</div>`;
+  else if (!s.supported) html = `<div class="lv-warn">The plugin ${esc(c.plugin_version)} cannot do this yet: copy the new plugin below and import it again.</div>`;
+  else if (!s.report) html = `<div class="muted">Reading the setup…</div>`;
+  else {
+    // grandMA3 only sends OSC when something changes, so "nothing yet" is a hint, not an error.
+    const got = c.osc_packets > 0;
+    const live = `<div><span class="dot ${got ? "ok" : "off"}"></span><b>OSC from grandMA3 arrives</b><span class="muted">${got ? `${c.osc_packets} messages` : "nothing yet: grandMA3 only sends on changes, move an executor fader to test"}</span></div>`;
+    html = s.checks.map(k => `<div><span class="dot ${k.ok ? "ok" : "bad"}"></span><b>${esc(k.label)}</b><span class="muted">${esc(k.detail)}</span></div>`).join("") + live;
+  }
+  setHtml($("setup-checks"), html);
+  const missing = s.checks.some(k => !k.ok);
+  $("setup-apply").disabled = !(c.plugin_connected && s.supported && missing);
+  $("setup-check").disabled = !(c.plugin_connected && s.supported);
+  if (s.changes.length) { $("setup-msg").hidden = false; $("setup-msg").textContent = "Changed in grandMA3: " + s.changes.join(" · ") + ". Save the show to keep it."; }
+}
+async function setupReq(apply) {
+  const r = await fetch("/api/ma3/setup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ apply }) });
+  if (!r.ok) { $("setup-msg").hidden = false; $("setup-msg").textContent = await r.text(); }
+}
+$("setup-check").onclick = () => setupReq(false);
+$("setup-apply").onclick = () => setupReq(true);
 
 // Plugin copy ----------------------------------------------------------------------------------
 let pluginInfo = null;
