@@ -837,9 +837,13 @@ function renderSetup(st) {
   if (!c.plugin_connected) html = `<div class="muted">Start the plugin in grandMA3 first.</div>`;
   else if (!s.supported) html = `<div class="lv-warn">The plugin ${esc(c.plugin_version)} cannot do this yet: copy the new plugin below and import it again.</div>`;
   else if (!s.report) html = `<div class="muted">Reading the setup…</div>`;
-  else html = s.checks.map(k => `<div><span class="dot ${k.ok ? "ok" : "bad"}"></span><b>${esc(k.label)}</b><span class="muted">${esc(k.detail)}</span></div>`).join("");
+  else {
+    // The settings can be right while nothing arrives, so show what really comes in too.
+    const live = { ok: c.osc_packets > 0, label: "OSC from grandMA3 arrives", detail: c.osc_packets > 0 ? `${c.osc_packets} messages` : "nothing received yet: Set up switches Enable Output off and on" };
+    html = [...s.checks, live].map(k => `<div><span class="dot ${k.ok ? "ok" : "bad"}"></span><b>${esc(k.label)}</b><span class="muted">${esc(k.detail)}</span></div>`).join("");
+  }
   setHtml($("setup-checks"), html);
-  const missing = s.checks.some(k => !k.ok);
+  const missing = s.checks.some(k => !k.ok) || (s.report && !c.osc_packets);
   $("setup-apply").disabled = !(c.plugin_connected && s.supported && missing);
   $("setup-check").disabled = !(c.plugin_connected && s.supported);
   if (s.changes.length) { $("setup-msg").hidden = false; $("setup-msg").textContent = "Changed in grandMA3: " + s.changes.join(" · ") + ". Save the show to keep it."; }

@@ -339,7 +339,12 @@ local function applySetup(want)
         end
       end
     end
-    if not yes(display(b, "EnableOutput")) then set(b, "EnableOutput", "Yes"); note("OSC: Enable Output") end
+    if not yes(display(b, "EnableOutput")) then
+      set(b, "EnableOutput", "Yes"); note("OSC: Enable Output")
+    elseif want.restart_output then
+      -- Nothing arrives although the lines are right: switch the output off and on again.
+      set(b, "EnableOutput", "No"); set(b, "EnableOutput", "Yes"); note("OSC: Enable Output switched off and on")
+    end
     if not yes(display(b, "EnableInput")) then
       set(b, "EnableInput", "Yes"); note("OSC: Enable Input")
     elseif reopen then
