@@ -176,12 +176,12 @@
   <h1>Boothmate</h1>
   <nav id="tabs" aria-label="Sections">
     <button data-tab="status"><span class="dot" id="dot-status"></span>Status</button>
-    <button data-tab="live">Live</button>
     <button data-tab="cdj"><span class="dot" id="dot-cdj"></span>CDJs</button>
     <button data-tab="mapping"><span class="dot" id="dot-mapping"></span>MIDI &amp; Mapping</button>
     <button data-tab="test">Test controller</button>
     <button data-tab="ma3"><span class="dot" id="dot-ma3"></span>grandMA3</button>
     <button data-tab="log">Log</button>
+    <button data-tab="live">Live</button>
   </nav>
   <div class="hdr-right"><span id="page-text"></span><span id="hdr-bpm"></span></div>
 </header>
@@ -618,7 +618,7 @@ $("maps").onchange = e => {
 };
 $("maps").onclick = e => { const b = e.target.closest("[data-del]"); if (b) post("/api/midi/mapping", { index: +b.dataset.del, delete: true }); };
 // Tabs -------------------------------------------------------------------------------------------
-const TABS = ["status", "live", "cdj", "mapping", "test", "ma3", "log"];
+const TABS = ["status", "cdj", "mapping", "test", "ma3", "log", "live"];
 let tab = "status";
 function showTab(t) {
   if (!TABS.includes(t)) t = "status";
