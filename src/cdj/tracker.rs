@@ -1,10 +1,12 @@
 //! The live picture of the DJ Link network: which devices are there, and per player the tempo,
 //! beat and bar position. Pure logic, fed with parsed packets.
 
+use super::analysis::TrackData;
 use super::packet::{self, Kind, Packet};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
 
 /// A device counts as gone after this long without any packet (keep-alives come every 1.5-2 s).
 pub const DEVICE_TIMEOUT_MS: u64 = 5_000;
@@ -77,16 +79,65 @@ pub struct Device {
     // CDJ-3000 position packets.
     pub position_ms: Option<u32>,
     pub track_len_s: Option<u32>,
+    /// Playhead in ms of track time when this state was sent: from position packets, else
+    /// from the beat number on the beat grid (or on the track BPM without one).
+    pub playhead_ms: Option<u32>,
+
+    /// Track data from the player's database (M5): what the UI shows in the player card.
+    pub meta: Option<TrackMeta>,
+    /// The full track data, for phrases and the beat grid.
+    #[serde(skip)]
+    pub data: Option<Arc<TrackData>>,
+    /// The rekordbox phrase at the playhead.
+    pub phrase: Option<PhraseNow>,
+}
+
+/// Summary of the loaded track's data. The waveform and the rest are fetched by `key`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct TrackMeta {
+    /// none, loading, ok, failed.
+    pub state: String,
+    pub note: Option<String>,
+    pub key: Option<String>,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub musical_key: Option<String>,
+    pub duration_s: Option<u32>,
+    pub bpm: Option<f32>,
+    pub waveform: bool,
+    pub phrases: usize,
+    pub cues: usize,
+    pub missing: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PhraseNow {
+    pub label: String,
+    pub kind: &'static str,
+    /// Bar within the phrase (1-based) and the phrase length in bars.
+    pub bar: u32,
+    pub bars: u32,
+    /// Beats until the next phrase starts.
+    pub beats_left: u32,
+    /// The next phrase, `None` after the last one.
+    pub next: Option<String>,
+    pub next_kind: Option<&'static str>,
+    /// The fill-in at the end of this phrase has started.
+    pub fill: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Track {
     pub player: u8,
     pub slot: String,
+    /// Slot byte (Sr) of the status packet.
+    pub slot_id: u8,
     /// rekordbox ID.
     pub id: u32,
     /// rekordbox, unanalysed, cd, streaming.
     pub kind: String,
+    /// Track type byte (Tr) of the status packet.
+    pub type_id: u8,
 }
 
 /// What happened, for the log and (later) for grandMA3.
@@ -145,6 +196,129 @@ impl Device {
             self.bar_in_4 = Some(((bar - 1) % 4 + 1) as u8);
             self.bar_in_8 = Some(((bar - 1) % 8 + 1) as u8);
         }
+        self.set_phrase();
+    }
+
+    /// The rekordbox phrase at the current beat. Inside a phrase, the 4- and 8-bar groups
+    /// count from the phrase start instead of the grid start, so "phrase" actions follow the
+    /// real song structure.
+    fn set_phrase(&mut self) {
+        let (Some(beat), Some(data)) = (self.beat, self.data.as_ref()) else {
+            self.phrase = None;
+            return;
+        };
+        let Some(first) = data.phrases.first() else {
+            self.phrase = None;
+            return;
+        };
+        let now = match data.phrase_at(beat) {
+            Some((i, p)) => {
+                let into = beat - p.beat;
+                let bar = into / 4;
+                self.bar_in_4 = Some((bar % 4 + 1) as u8);
+                self.bar_in_8 = Some((bar % 8 + 1) as u8);
+                let next = data.phrases.get(i + 1);
+                PhraseNow {
+                    label: p.label.clone(),
+                    kind: p.kind,
+                    bar: bar + 1,
+                    bars: (p.end - p.beat).div_ceil(4),
+                    beats_left: p.end - beat,
+                    next: next.map(|n| n.label.clone()),
+                    next_kind: next.map(|n| n.kind),
+                    fill: p.fill.is_some_and(|f| beat >= f),
+                }
+            }
+            None if beat < first.beat => PhraseNow {
+                label: "Before the first phrase".into(),
+                kind: "none",
+                bar: 0,
+                bars: 0,
+                beats_left: first.beat - beat,
+                next: Some(first.label.clone()),
+                next_kind: Some(first.kind),
+                fill: false,
+            },
+            None => PhraseNow {
+                label: "End".into(),
+                kind: "none",
+                bar: 0,
+                bars: 0,
+                beats_left: 0,
+                next: None,
+                next_kind: None,
+                fill: false,
+            },
+        };
+        self.phrase = Some(now);
+    }
+
+    /// Track data arrived (or is already known) for the loaded track. True if it changed.
+    pub fn set_data(&mut self, t: Arc<TrackData>) -> bool {
+        if self.data.as_ref().is_some_and(|d| Arc::ptr_eq(d, &t)) {
+            return false;
+        }
+        self.meta = Some(TrackMeta {
+            state: "ok".into(),
+            note: None,
+            key: Some(t.key.clone()),
+            title: t.title.clone(),
+            artist: t.artist.clone(),
+            musical_key: t.musical_key.clone(),
+            duration_s: t.duration_s,
+            bpm: t.bpm,
+            waveform: t.detail.is_some() || t.preview.is_some(),
+            phrases: t.phrases.len(),
+            cues: t.cues.len(),
+            missing: t.missing.clone(),
+        });
+        self.data = Some(t);
+        self.set_bar_from_beat();
+        self.playhead_ms = self.position(None).map(|p| p.0 as u32);
+        true
+    }
+
+    /// Loading state without data. True if it changed.
+    pub fn set_track_note(&mut self, state: &str, note: Option<&str>) -> bool {
+        let m = TrackMeta {
+            state: state.into(),
+            note: note.map(str::to_string),
+            ..Default::default()
+        };
+        if self.data.is_some() || self.meta.as_ref() == Some(&m) {
+            return false;
+        }
+        self.meta = Some(m);
+        true
+    }
+
+    /// Playhead in ms of track time and whether it is estimated. While playing, `now` adds
+    /// the time since the last beat (at most one beat) to the position of that beat.
+    pub fn position(&self, now: Option<u64>) -> Option<(u64, bool)> {
+        if let Some(ms) = self.position_ms {
+            return Some((ms as u64, false));
+        }
+        let beat = self.beat.filter(|&b| b > 0)?;
+        let grid = self.data.as_ref().and_then(|d| {
+            let at = d.beat_ms(beat)?;
+            let len = d.beat_ms(beat + 1).map_or(0, |n| n.saturating_sub(at));
+            Some((at as f64, len as f64))
+        });
+        let (at, len, estimated) = match grid {
+            Some((at, len)) if len > 0.0 => (at, len, false),
+            _ => {
+                let bpm = self.track_bpm.filter(|&b| b > 0.0)?;
+                let len = 60_000.0 / bpm as f64;
+                ((beat - 1) as f64 * len, len, true)
+            }
+        };
+        let since = match (now, self.last_beat, self.playing) {
+            (Some(now), Some(t), Some(true)) => {
+                (now.saturating_sub(t) as f64 * (1.0 + self.pitch as f64 / 100.0)).min(len)
+            }
+            _ => 0.0,
+        };
+        Some(((at + since) as u64, estimated))
     }
 
     fn effective_bpm(&mut self) {
@@ -259,7 +433,9 @@ impl CdjState {
                 let track = (s.track_player != 0).then(|| Track {
                     player: s.track_player,
                     slot: packet::slot_name(s.track_slot).to_string(),
+                    slot_id: s.track_slot,
                     id: s.track_id,
+                    type_id: s.track_type,
                     kind: match s.track_type {
                         1 => "rekordbox",
                         2 => "unanalysed",
@@ -276,6 +452,9 @@ impl CdjState {
                     d.bar_in_4 = None;
                     d.bar_in_8 = None;
                     d.position_ms = None;
+                    d.meta = None;
+                    d.data = None;
+                    d.phrase = None;
                     ev.push(Event::Track {
                         number: s.number,
                         track,
@@ -303,6 +482,11 @@ impl CdjState {
                 d.bpm = m.bpm;
                 d.track_bpm = m.bpm;
                 self.update_master(&mut ev);
+            }
+        }
+        for d in self.devices.values_mut() {
+            if d.kind != Some(Kind::Mixer) {
+                d.playhead_ms = d.position(Some(now)).map(|p| p.0 as u32);
             }
         }
         ev
@@ -537,5 +721,67 @@ mod tests {
         assert!(ev
             .iter()
             .any(|e| matches!(e, Event::Track { number: 1, track: Some(t) } if t.id == 43)));
+    }
+
+    #[test]
+    fn phrases_and_grid_position() {
+        use crate::cdj::analysis::{Grid, Phrase, TrackData};
+        let mut st = CdjState::default();
+        feed(
+            &mut st,
+            STATUS_PORT,
+            &packet::status(&status(Some(70), 2, true)),
+            1_000,
+        );
+        let ph = |beat, end, label: &str, kind| Phrase {
+            beat,
+            end,
+            label: label.into(),
+            kind,
+            fill: None,
+        };
+        // Grid starting 250 ms in, 120 BPM.
+        let t = TrackData {
+            grid: Some(Grid {
+                ms: (0..400).map(|i| 250 + i * 500).collect(),
+                bar: (0..400).map(|i| (i % 4 + 1) as u8).collect(),
+            }),
+            phrases: vec![
+                ph(5, 69, "Intro 1", "intro"),
+                ph(69, 133, "Up 1", "up"),
+                ph(133, 197, "Chorus 1", "chorus"),
+            ],
+            ..Default::default()
+        };
+        let d = st.devices.get_mut(&1).unwrap();
+        assert!(d.set_data(Arc::new(t)));
+        let p = d.phrase.clone().unwrap();
+        assert_eq!(
+            (p.label.as_str(), p.bar, p.bars, p.beats_left),
+            ("Up 1", 1, 16, 63)
+        );
+        assert_eq!(p.next.as_deref(), Some("Chorus 1"));
+        // The 8-bar group counts from the phrase start, not from the grid start.
+        assert_eq!(d.bar_in_8, Some(1));
+        // Beat 70 is at 250 + 69 * 500 ms on the grid, not at 69 beats of 128 BPM.
+        assert_eq!(d.position(None), Some((34_750, false)));
+        // Playing: plus the time since the last beat, at most one beat.
+        d.last_beat = Some(10_000);
+        assert_eq!(d.position(Some(10_200)), Some((34_950, false)));
+        assert_eq!(d.position(Some(19_000)), Some((35_250, false)));
+        // Before the first phrase.
+        feed(
+            &mut st,
+            STATUS_PORT,
+            &packet::status(&status(Some(2), 2, true)),
+            1_200,
+        );
+        let p = st.devices[&1].phrase.clone().unwrap();
+        assert_eq!((p.beats_left, p.next.as_deref()), (3, Some("Intro 1")));
+        // A new track drops the data.
+        let mut s2 = status(Some(1), 1, true);
+        s2.track_id = 43;
+        feed(&mut st, STATUS_PORT, &packet::status(&s2), 1_400);
+        assert!(st.devices[&1].data.is_none() && st.devices[&1].phrase.is_none());
     }
 }

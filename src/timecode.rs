@@ -5,7 +5,8 @@
 //! Frames are only sent while a player plays, so the show's Auto Stop works like with LTC.
 //!
 //! The position comes from the CDJ-3000 position packets (exact). Older players only report the
-//! beat number, so their position is estimated from beat number and track BPM: it is off by the
+//! beat number: with the track's beat grid (M5 track data) that gives the time of the beat;
+//! without it the position is estimated from beat number and track BPM, which is off by the
 //! start of the beat grid and drifts on tracks with tempo changes.
 
 use crate::cdj::tracker::{CdjState, Device};
@@ -87,21 +88,7 @@ pub fn playhead(d: &Device, now: u64) -> Option<(u64, bool)> {
     if d.playing != Some(true) {
         return None;
     }
-    if let Some(ms) = d.position_ms {
-        return Some((ms as u64, false));
-    }
-    let (beat, bpm) = (d.beat?, d.track_bpm?);
-    if beat == 0 || bpm <= 0.0 {
-        return None;
-    }
-    let beat_ms = 60_000.0 / bpm as f64;
-    // Time since the last beat, at the player's pitch, at most one beat.
-    let since = d
-        .last_beat
-        .map(|t| now.saturating_sub(t) as f64 * (1.0 + d.pitch as f64 / 100.0))
-        .unwrap_or(0.0)
-        .min(beat_ms);
-    Some((((beat - 1) as f64 * beat_ms + since) as u64, true))
+    d.position(Some(now))
 }
 
 /// The streams to send: tempo master on 0, every playing player on its number.

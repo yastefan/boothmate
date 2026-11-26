@@ -81,7 +81,7 @@
   .knobval { margin-top: auto; height: 18px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; }
   .knobval b { width: 16px; height: 16px; border-radius: 50%; flex: none; }
   /* DJ Link */
-  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 8px; }
+  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 8px; }
   .cdj { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .cdj.playing { border-color: var(--ok); }
   .cdj.master { box-shadow: inset 0 0 0 1px var(--warn); border-color: var(--warn); }
@@ -155,11 +155,16 @@
   .lv-beats .txt { display: flex; justify-content: space-between; color: #c3c9d0; font-size: 18px; }
   .lv-next { display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-radius: 12px; background: #1b1f27; font-size: 22px; }
   .lv-next b { font-variant-numeric: tabular-nums; margin-left: auto; }
-  .lv-time { position: relative; height: 96px; border-radius: 10px; background: #0b0d10; overflow: hidden; }
-  .lv-time .done { position: absolute; inset: 0 auto 0 0; background: #1c2a3d; }
-  .lv-time .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #2a3342; }
-  .lv-time .head { position: absolute; top: 0; bottom: 0; width: 3px; background: #fff; }
-  .lv-time .note { position: absolute; left: 12px; bottom: 8px; font-size: 12px; color: var(--muted); }
+  .tl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .tl canvas { display: block; width: 100%; contain: size; border-radius: 8px; background: #0b0d10; }
+  .tl canvas.detail { height: 64px; } .tl canvas.over { height: 26px; }
+  .tl.big canvas.detail { height: 150px; border-radius: 10px; } .tl.big canvas.over { height: 48px; border-radius: 10px; }
+  .tl.mini canvas.over { height: 30px; }
+  .trk { width: 0; min-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trk b { font-weight: 600; } .trk span { color: var(--muted); }
+  .lv-trk { font-size: 18px; color: #c3c9d0; }
+  .lv-next .ph { display: flex; flex-direction: column; gap: 2px; } .lv-next .ph small { font-size: 14px; color: var(--muted); }
+  .lv-next .k { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; }
   .lv-side { flex: 1 1 260px; display: flex; flex-direction: column; gap: 12px; }
   .lv-other { background: #121419; border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
   .lv-other.playing { border-color: var(--ok); }
@@ -377,6 +382,7 @@ function seqState(s) {
 
 function render(st) {
   last = st;
+  noteHeads(st);
   const c = st.connections;
   $("page-text").textContent = st.page != null ? `Page ${st.page}` : "";
   const hm = st.cdj.master != null ? st.cdj.devices[st.cdj.master] : null;
@@ -478,7 +484,9 @@ function cdjCard(d, master) {
   if (d.sync) chips.push(`<span class="chip">Sync</span>`);
   if (d.track) chips.push(`<span class="chip dim" title="rekordbox ID ${d.track.id}, from player ${d.track.player}">${esc(d.track.slot)} #${d.track.id}</span>`);
   if (d.simulated) chips.push(`<span class="chip dim">${last && last.cdj.replay ? "replay" : "simulated"}</span>`);
-  const prog = d.position_ms != null && d.track_len_s ? `<div class="prog" title="${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}"><i style="width:${Math.min(100, d.position_ms / d.track_len_s / 10).toFixed(1)}%"></i></div><div class="small" style="text-align:left">${mmss(d.position_ms)} / ${mmss(d.track_len_s * 1000)}</div>` : "";
+  const len = trackLen(d);
+  if (d.phrase && d.phrase.kind !== "none") pos.push(`${d.phrase.label}, ${d.phrase.next ? `${d.phrase.next} in ${d.phrase.beats_left}` : `${d.phrase.beats_left} left`}`);
+  const prog = d.track ? `${trackLine(d, "")}<div class="tl" data-tl="${d.number}" data-size="card"></div>${d.playhead_ms != null && len ? `<div class="small" style="text-align:left">${mmss(d.playhead_ms)} / ${mmss(len)}</div>` : ""}` : "";
   const pitch = d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "";
   return `<div class="${cls.join(" ")}">
     <div class="head"><span class="no">${d.number}</span><span class="nm">${esc(d.name)} · ${kindName[d.kind] || "Player"}</span></div>
@@ -779,26 +787,34 @@ function renderLive(st, hs) {
     const bb = m.beat_in_bar;
     const b4 = [1, 2, 3, 4].map(i => `<i class="${i === bb ? "on" + (i === 1 ? " down" : "") : bb && i < bb ? "past" : ""}"></i>`).join("");
     const b8 = range(1, 8).map(i => `<i class="${m.bar_in_8 && i <= m.bar_in_8 ? "on" : ""}"></i>`).join("");
-    const pos = m.position_ms != null && m.track_len_s ? `${mmss(m.position_ms)} / ${mmss(m.track_len_s * 1000)}` : "";
+    const len = trackLen(m);
+    const pos = m.playhead_ms != null && len ? `${mmss(m.playhead_ms)} / ${mmss(len)}` : "";
     const pitch = m.pitch ? `${m.pitch > 0 ? "+" : ""}${m.pitch.toFixed(2)} %` : "+0.00 %";
     const toPhrase = m.beat != null && bb ? (8 - (m.bar_in_8 || 1)) * 4 + (4 - bb) + 1 : null;
-    const next = m.beats_to_cue != null ? `<span>Cue</span><b>in ${m.beats_to_cue} beats</b>`
-      : toPhrase != null ? `<span>Next phrase</span><b>in ${toPhrase} beat${toPhrase === 1 ? "" : "s"}</b>` : "";
+    const ph = m.phrase, beats = n => `${n} beat${n === 1 ? "" : "s"}`;
+    const next = ph && ph.kind !== "none" ? `<div class="ph"><span><i class="k" style="background:${phraseColor(ph.kind)}"></i>${esc(ph.label)}${ph.fill ? " · fill" : ""}</span><small>Bar ${ph.bar} / ${ph.bars}</small></div>
+        <b>${ph.next ? `${esc(ph.next)} in ${beats(ph.beats_left)}` : `Last phrase, ${beats(ph.beats_left)} left`}</b>`
+      : ph && ph.next ? `<span>Before the first phrase</span><b>${esc(ph.next)} in ${beats(ph.beats_left)}</b>`
+      : m.beats_to_cue != null ? `<span>Cue</span><b>in ${m.beats_to_cue} beats</b>`
+      : toPhrase != null ? `<span>Next phrase (8-bar grid)</span><b>in ${beats(toPhrase)}</b>` : "";
     main = `<div class="lv-main${c.master === m.number ? "" : " nomaster"}">
       <div class="lv-head">${c.master === m.number ? `<span class="lv-tag">MASTER</span>` : ""}<strong>Player ${m.number}</strong><span class="m">${esc(m.name)}</span><span class="pos">${pos}</span></div>
+      ${trackLine(m, "lv-trk")}
       <div class="lv-row">
         <div><div class="lv-bpm">${m.bpm != null ? m.bpm.toFixed(2) : "&ndash;"}</div><div class="lv-sub">BPM · pitch ${pitch}${m.playing ? "" : " · " + esc(m.play_state || "stopped")}</div></div>
         <div class="lv-beats"><div class="b4" role="img" aria-label="Beat ${bb || "-"} of 4">${b4}</div><div class="b8" title="Bar in the 8-bar phrase grid">${b8}</div>
           <div class="txt"><span>${m.bar != null ? `Bar ${m.bar}` : ""}</span><span>${m.bar_in_8 ? `Phrase bar ${m.bar_in_8} / 8` : ""}</span></div></div>
       </div>
       ${next ? `<div class="lv-next">${next}</div>` : ""}
-      ${timeline(m)}
+      ${m.track ? `<div class="tl big" data-tl="${m.number}" data-size="big"></div>` : ""}
     </div>`;
   }
   const others = players.filter(d => d !== m).map(d => `<div class="lv-other${d.playing ? " playing" : ""}">
       <div><strong style="font-size:20px">Player ${d.number}</strong> <span class="muted">${esc(d.name)}</span></div>
       <div class="bpm">${d.bpm != null ? d.bpm.toFixed(2) : "&ndash;"}</div>
-      <div class="muted">${[d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "", d.play_state, d.on_air ? "on air" : ""].filter(Boolean).map(esc).join(" · ")}</div>
+      <div class="muted">${[d.pitch ? `${d.pitch > 0 ? "+" : ""}${d.pitch.toFixed(2)} %` : "", d.play_state, d.on_air ? "on air" : "", d.phrase && d.phrase.kind !== "none" ? d.phrase.label : ""].filter(Boolean).map(esc).join(" · ")}</div>
+      ${trackLine(d, "")}
+      ${d.track ? `<div class="tl mini" data-tl="${d.number}" data-size="mini"></div>` : ""}
     </div>`).join("");
   const tcs = st.timecode.on && st.timecode.streams.length ? `<div class="lv-other"><span class="muted">Timecode</span>${st.timecode.streams.map(s => `<div style="font-variant-numeric: tabular-nums">Stream ${s.id} · ${s.tc}${s.estimated ? " ~" : ""}</div>`).join("")}</div>` : "";
   const probs = hs.filter(h => h.level === "bad" || h.level === "warn");
@@ -808,14 +824,191 @@ function renderLive(st, hs) {
   setHtml($("live"), `<div class="lv-wrap">${main}${others || tcs ? `<div class="lv-side">${others}${tcs}</div>` : ""}</div>${strip}`);
 }
 
-// Track timeline: playhead and the 32-beat phrase grid. Waveform and real phrases need track data.
-function timeline(d) {
-  if (d.position_ms == null || !d.track_len_s) return `<div class="lv-time"><span class="note">Timeline: needs position data (CDJ-3000). Waveform and phrases come with the track data.</span></div>`;
-  const len = d.track_len_s * 1000, p = Math.min(100, d.position_ms / len * 100);
-  let ticks = "";
-  if (d.track_bpm) { const step = 32 * 60000 / d.track_bpm; for (let t = step; t < len; t += step) ticks += `<i class="tick" style="left:${(t / len * 100).toFixed(2)}%"></i>`; }
-  return `<div class="lv-time"><i class="done" style="width:${p.toFixed(2)}%"></i>${ticks}<i class="head" style="left:${p.toFixed(2)}%"></i><span class="note">Lines: every 32 beats from the track start. Waveform and phrases come with the track data.</span></div>`;
+// Track timeline: waveform, beat grid, rekordbox phrases and cues, drawn on canvases. --------------
+// The player cards and the live view only hold an empty <div data-tl>; the canvases live here and
+// are moved into the current div every frame, so re-rendering the HTML does not redraw them.
+const PHRASE_COLORS = { intro: "#4f9cff", up: "#f0b429", verse: "#f0b429", down: "#8a6cff", bridge: "#8a6cff", chorus: "#ef5350", outro: "#3ccf7a", none: "#2a2f38" };
+const phraseColor = k => PHRASE_COLORS[k] || "#8a93a0";
+const trackLen = d => d.track_len_s ? d.track_len_s * 1000 : d.meta && d.meta.duration_s ? d.meta.duration_s * 1000 : null;
+function trackLine(d, cls) {
+  const m = d.meta;
+  if (!d.track) return "";
+  if (!m || m.state === "loading") return `<div class="trk ${cls}"><span>Loading track data…</span></div>`;
+  if (m.state !== "ok") return `<div class="trk ${cls}" title="${esc(m.note || "")}"><span>${esc(m.state === "failed" ? "No track data: " : "")}${esc(m.note || "")}</span></div>`;
+  const extra = [m.musical_key, m.bpm ? m.bpm.toFixed(2) + " BPM" : ""].filter(Boolean).join(" · ");
+  return `<div class="trk ${cls}" title="${esc([m.title, m.artist, m.missing.length ? "missing: " + m.missing.join(", ") : ""].filter(Boolean).join(" – "))}"><b>${esc(m.title || "Unknown title")}</b> <span>${esc(m.artist || "")}${extra ? " · " + esc(extra) : ""}</span></div>`;
 }
+
+// Playhead per player: the server's value, moved on locally between updates.
+const heads = {};
+function headMs(h, now) { return h.ms + (h.playing ? Math.min(now - h.t, 1500) * h.speed : 0); }
+function noteHeads(st) {
+  const now = performance.now();
+  for (const d of Object.values(st.cdj.devices)) {
+    if (d.playhead_ms == null) { delete heads[d.number]; continue; }
+    const h = heads[d.number], key = d.meta && d.meta.key, playing = !!d.playing, speed = 1 + (d.pitch || 0) / 100;
+    if (h && h.key === key && h.raw === d.playhead_ms && h.playing === playing) { h.speed = speed; continue; }
+    let ms = d.playhead_ms;
+    if (h && h.key === key && playing && h.playing) {
+      // Small corrections are blended in, so the waveform does not jitter on every beat.
+      const pred = headMs(h, now);
+      if (Math.abs(ms - pred) < 150) ms = pred + (ms - pred) * 0.25;
+    }
+    heads[d.number] = { raw: d.playhead_ms, ms, t: now, speed, playing, key };
+  }
+}
+
+// Track data by key, fetched once.
+const tdata = new Map();
+function trackData(d) {
+  const k = d.meta && d.meta.state === "ok" && d.meta.key;
+  if (!k) return null;
+  const t = tdata.get(k);
+  if (t && t.retry && performance.now() > t.retry) tdata.delete(k);
+  else if (t !== undefined) return t.retry || t.loading ? null : t;
+  tdata.set(k, { loading: true });
+  fetch(`/api/cdj/track/${encodeURIComponent(k)}`).then(r => r.ok ? r.json() : Promise.reject()).then(j => {
+    for (const w of [j.preview, j.detail]) if (w) w.bytes = Uint8Array.from(atob(w.data), c => c.charCodeAt(0));
+    tdata.set(k, j);
+    while (tdata.size > 12) tdata.delete(tdata.keys().next().value);
+  }).catch(() => tdata.set(k, { retry: performance.now() + 5000 }));
+  return null;
+}
+
+const tlNodes = new Map();
+function tlNode(key, size) {
+  let n = tlNodes.get(key);
+  if (!n) {
+    n = document.createElement("div");
+    n.style.display = "contents";
+    if (size !== "mini") { const c = document.createElement("canvas"); c.className = "detail"; n.appendChild(c); }
+    const o = document.createElement("canvas"); o.className = "over"; n.appendChild(o);
+    tlNodes.set(key, n);
+  }
+  return n;
+}
+function fit(c) {
+  const r = window.devicePixelRatio || 1, w = Math.round(c.clientWidth * r), h = Math.round(c.clientHeight * r);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext("2d");
+  g.setTransform(r, 0, 0, r, 0, 0);
+  g.clearRect(0, 0, c.clientWidth, c.clientHeight);
+  return [g, c.clientWidth, c.clientHeight];
+}
+// Column i of a waveform: [height 0-1, "rgb(...)"].
+function col(w, i) {
+  const b = w.bytes, o = i * 4;
+  return [b[o] / 255, b[o + 1], b[o + 2], b[o + 3]];
+}
+function waveColor(w, r, g, b) {
+  if (!w.color) return `rgb(${r},${g},${b})`;
+  // Colour waveforms: lift dark columns a little so quiet parts stay visible.
+  const m = Math.max(r, g, b, 1), k = Math.min(1.3, 220 / m);
+  return `rgb(${Math.min(255, r * k) | 0},${Math.min(255, g * k) | 0},${Math.min(255, b * k) | 0})`;
+}
+function lowerBound(a, v) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; }
+const cueColor = c => c.color || (c.hot ? "#3ccf7a" : c.loop_ms != null ? "#f08c29" : "#ef5350");
+const cueName = c => c.hot ? String.fromCharCode(64 + c.hot) : c.loop_ms != null ? "L" : "M";
+
+function drawDetail(c, d, t, pos, big) {
+  const [g, W, H] = fit(c);
+  if (pos == null) { g.fillStyle = "#8a93a0"; g.font = "12px system-ui"; g.fillText(t ? "Waiting for the playhead…" : (d.meta && d.meta.note) || "", 10, H / 2 + 4); return; }
+  const span = big ? 16000 : 10000, start = pos - span * 0.35, px = span / W;
+  const x = ms => (ms - start) / px;
+  const band = big ? 18 : 9, mid = band + (H - band) / 2, amp = (H - band) / 2 - 2;
+  // Phrases on top.
+  if (t && t.grid && t.phrases.length) {
+    for (const p of t.phrases) {
+      const a = t.grid.ms[p.beat - 1], b = t.grid.ms[p.end - 1] ?? (t.grid.ms.at(-1) + 500);
+      if (a == null || x(b) < 0 || x(a) > W) continue;
+      g.fillStyle = phraseColor(p.kind); g.globalAlpha = 0.85; g.fillRect(x(a), 0, x(b) - x(a) - 1, band - 3); g.globalAlpha = 1;
+      if (big) { g.fillStyle = "#0e1014"; g.font = "600 12px system-ui"; g.fillText(p.label, Math.max(x(a), 0) + 5, 12); }
+      if (p.fill != null && t.grid.ms[p.fill - 1] != null) { g.fillStyle = "#fff"; g.fillRect(x(t.grid.ms[p.fill - 1]), band - 3, x(b) - x(t.grid.ms[p.fill - 1]), 2); }
+    }
+  }
+  // Waveform, mirrored around the middle.
+  const w = t && t.detail;
+  if (w) {
+    for (let px0 = 0; px0 < W; px0++) {
+      const i0 = Math.floor((start + px0 * px) * 0.15), i1 = Math.max(i0 + 1, Math.floor((start + (px0 + 1) * px) * 0.15));
+      if (i1 <= 0 || i0 >= w.columns) continue;
+      let best = -1, bi = 0;
+      for (let i = Math.max(0, i0); i < Math.min(w.columns, i1); i++) { const h = w.bytes[i * 4]; if (h > best) { best = h; bi = i; } }
+      const [h, r, gg, b] = col(w, bi);
+      g.fillStyle = waveColor(w, r, gg, b);
+      g.fillRect(px0, mid - h * amp, 1, Math.max(1, h * amp * 2));
+    }
+  }
+  // Beat grid: bars brighter, bar numbers on the big view.
+  if (t && t.grid) {
+    const ms = t.grid.ms;
+    for (let i = Math.max(0, lowerBound(ms, start) - 1); i < ms.length && ms[i] <= start + span; i++) {
+      const down = t.grid.bar[i] === 1, xx = Math.round(x(ms[i])) + 0.5;
+      g.fillStyle = down ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.18)";
+      g.fillRect(xx, band, 1, down ? H - band : 6);
+      if (!down) g.fillRect(xx, H - 6, 1, 6);
+      if (big && down) { g.fillStyle = "#8a93a0"; g.font = "11px system-ui"; g.fillText(String(Math.floor(i / 4) + 1), xx + 3, H - 4); }
+    }
+  } else if (d.track_bpm) {
+    const step = 60000 / d.track_bpm;
+    for (let b = Math.ceil(start / step); b * step < start + span; b++) { g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(x(b * step), band, 1, H - band); }
+  }
+  // Cues and loops.
+  if (t) for (const cu of t.cues) {
+    const a = x(cu.ms);
+    if (cu.loop_ms != null) { g.fillStyle = "rgba(240,140,41,.18)"; g.fillRect(a, band, x(cu.loop_ms) - a, H - band); }
+    if (a < -20 || a > W) continue;
+    g.fillStyle = cueColor(cu); g.fillRect(a, band, 2, H - band);
+    g.beginPath(); g.moveTo(a, band); g.lineTo(a + 14, band); g.lineTo(a + 14, band + 13); g.lineTo(a, band + 13); g.fill();
+    g.fillStyle = "#0e1014"; g.font = "700 10px system-ui"; g.fillText(cueName(cu), a + 3, band + 10);
+  }
+  if (!t) { g.fillStyle = "#8a93a0"; g.font = "12px system-ui"; g.fillText(d.meta && d.meta.state === "loading" ? "Loading track data…" : (d.meta && d.meta.note) || "No track data", 10, H - 8); }
+  // Playhead.
+  g.fillStyle = "#fff"; g.fillRect(Math.round(x(pos)) - 1, 0, 3, H);
+}
+
+function drawOverview(c, d, t, pos) {
+  const [g, W, H] = fit(c);
+  const len = t && t.detail ? t.detail.columns / 0.15 : t && t.duration_s ? t.duration_s * 1000 : trackLen(d);
+  if (!len) { g.fillStyle = "#8a93a0"; g.font = "11px system-ui"; g.fillText(t ? "" : d.meta && d.meta.state === "loading" ? "Loading track data…" : "No track data", 8, H / 2 + 4); return; }
+  const x = ms => ms / len * W;
+  const w = t && t.preview, bar = 4, base = H - bar - 1;
+  if (w) {
+    for (let px0 = 0; px0 < W; px0++) {
+      const i = Math.min(w.columns - 1, Math.floor(px0 / W * w.columns));
+      const [h, r, gg, b] = col(w, i);
+      g.fillStyle = waveColor(w, r, gg, b);
+      g.fillRect(px0, base - h * (base - 2), 1, Math.max(1, h * (base - 2)));
+    }
+  }
+  if (t && t.grid) for (const p of t.phrases) {
+    const a = t.grid.ms[p.beat - 1], b = t.grid.ms[p.end - 1] ?? len;
+    if (a == null) continue;
+    g.fillStyle = phraseColor(p.kind); g.fillRect(x(a), H - bar, x(b) - x(a) - 1, bar);
+  }
+  if (t) for (const cu of t.cues) { g.fillStyle = cueColor(cu); g.fillRect(x(cu.ms), 0, 2, 6); }
+  if (pos != null) {
+    g.fillStyle = "rgba(11,13,16,.55)"; g.fillRect(0, 0, x(pos), H);
+    g.fillStyle = "#fff"; g.fillRect(Math.round(x(pos)) - 1, 0, 2, H);
+  }
+}
+
+function drawTimelines() {
+  const now = performance.now();
+  if (last) document.querySelectorAll("[data-tl]").forEach(el => {
+    if (!el.offsetParent) return;
+    const d = last.cdj.devices[el.dataset.tl];
+    if (!d) return;
+    const size = el.dataset.size, node = tlNode(el.dataset.tl + size, size);
+    if (node.parentNode !== el) el.appendChild(node);
+    const t = trackData(d), h = heads[d.number], pos = h ? headMs(h, now) : null;
+    const [det, over] = node.children.length === 2 ? node.children : [null, node.children[0]];
+    if (det) drawDetail(det, d, t, pos, size === "big");
+    drawOverview(over, d, t, pos);
+  });
+  requestAnimationFrame(drawTimelines);
+}
+requestAnimationFrame(drawTimelines);
 
 // grandMA3 connection details --------------------------------------------------------------------
 function renderMa3(st) {

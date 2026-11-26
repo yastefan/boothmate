@@ -3,14 +3,19 @@
 //! Stage 1: listens for keep-alives (UDP 50000) and beat and position packets (UDP 50001). This
 //! needs nothing from Boothmate's side. Stage 2: announces Boothmate as a silent virtual player
 //! with a device number outside the player range (7 and up), so players also send it their
-//! status (UDP 50002). Boothmate never sends anything else: no media browsing, no track loading,
-//! no player control.
+//! status (UDP 50002). Stage 3 (`metadata`): asks the database of the player that holds the
+//! media about the loaded track (TCP 12523 and the port it names). Boothmate never sends
+//! anything else: no media browsing, no track loading, no player control.
 
+pub mod analysis;
 pub mod check;
+pub mod dbserver;
+pub mod metadata;
 pub mod packet;
 pub mod pcap;
 pub mod replay;
 pub mod sim;
+pub mod simdb;
 pub mod tracker;
 
 use crate::state::now_ms;
@@ -132,9 +137,11 @@ pub async fn run(app: Arc<App>) {
         });
         tokio::select! {
             _ = run_on(app.clone()) => return,
+            _ = metadata::run(app.clone()) => return,
             _ = app.wait_modules(|m| !m.cdj) => {}
         }
         crate::log::info("DJ Link: switched off");
+        app.tracks.clear();
         app.update(|st| st.cdj = CdjState::default());
     }
 }
@@ -450,15 +457,7 @@ impl Recorder {
     fn start(dir: &std::path::Path) -> std::io::Result<Self> {
         let logs = dir.join("logs");
         std::fs::create_dir_all(&logs)?;
-        let secs = now_ms() / 1000;
-        let (d, t) = (secs / 86_400, secs % 86_400);
-        let (y, m, day) = civil(d as i64);
-        let name = format!(
-            "djlink-{y:04}{m:02}{day:02}-{:02}{:02}{:02}.pcap",
-            t / 3600,
-            t / 60 % 60,
-            t % 60
-        );
+        let name = format!("djlink-{}.pcap", stamp());
         let path = logs.join(name);
         let f = std::fs::File::create(&path)?;
         Ok(Recorder {
@@ -502,6 +501,19 @@ impl Recorder {
     fn finish(&mut self) {
         self.flush();
     }
+}
+
+/// `YYYYMMDD-HHMMSS` (UTC) for file names.
+fn stamp() -> String {
+    let secs = now_ms() / 1000;
+    let (d, t) = (secs / 86_400, secs % 86_400);
+    let (y, m, day) = civil(d as i64);
+    format!(
+        "{y:04}{m:02}{day:02}-{:02}{:02}{:02}",
+        t / 3600,
+        t / 60 % 60,
+        t % 60
+    )
 }
 
 /// Days since 1970 to (year, month, day), UTC.
