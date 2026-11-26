@@ -2,8 +2,9 @@
 --
 -- Reports what OSC output does not carry: the executors of the current page with their assigned
 -- objects, names, appearance colours and start state, and the grandMA3 version. Boothmate
--- connects to this plugin over TCP. The only thing the plugin changes is the tempo of speed
--- masters (Master 3.x), when Boothmate's tempo link asks for it; no other commands are accepted.
+-- connects to this plugin over TCP. The plugin changes only two things, and only when Boothmate
+-- asks: the tempo of speed masters (Master 3.x) for the tempo link, and the OSC lines and the
+-- Art-Net timecode input when the user presses "Set up in grandMA3". No other commands are accepted.
 --
 -- Start:  Plugin "boothmate"                       listen on 127.0.0.1:9002
 --         Plugin "boothmate" "bind=0.0.0.0 token=x" listen on the network, Boothmate must send token x
@@ -14,8 +15,13 @@
 --   Boothmate -> plugin  {"op":"hello","token":"..."}  {"op":"resync"}
 --                        {"op":"speed","master":1,"bpm":128.0}  speed master 3.1 to an exact BPM
 --                        {"op":"phase","master":1}              re-sync its phasers (FastSync)
+--                        {"op":"setup"}                         report OSC lines and Art-Net timecode input
+--                        {"op":"setup_apply","osc":[{port,dest,send,receive,name,prefix}],
+--                         "artnet_tc":{stream,slot}}             add or fix them, then report
 --   plugin -> Boothmate  {"ev":"hello","plugin":"0.1.0","ma":"2.5.1.1"}
 --                        {"ev":"page","page":1,"executors":[{no,class,obj,name,addr,color,active,fader,cue}]}
+--                        {"ev":"setup","osc":{input,output,lines:[...]},"artnet":{input,timecode:[...]},
+--                         "changes":["..."]}
 --                        {"ev":"error","msg":"..."}
 --
 -- Change detection: HookObjectChange on every assigned object, its appearance and the pools
@@ -29,7 +35,7 @@ local myHandle    = select(4, ...)
 local socket = require("socket")
 local json   = require("json")
 
-local VERSION = "0.2.0"
+local VERSION = "0.3.0"
 local DEFAULT_PORT = 9002
 local SNAPSHOT_MIN_INTERVAL = 0.1 -- seconds between page snapshots
 local EXEC_ROWS = { 1, 2, 3, 4 }   -- executor numbers <row>01 .. <row>99
@@ -219,6 +225,154 @@ local function phase(n)
   return true
 end
 
+---------------------------------------------------------------------------------------------
+-- Setup: OSC lines (ShowData().OSCBase) and the Art-Net timecode input
+-- (Root().DeviceConfigurations.DMXProtocols.ArtNet). See docs/spikes/m5-ma3-setup.md.
+---------------------------------------------------------------------------------------------
+
+local function yes(v)
+  v = tostring(v or ""):lower()
+  return v == "yes" or v == "on" or v == "true" or v == "1"
+end
+
+local function set(h, prop, value)
+  return pcall(function() h:Set(prop, tostring(value)) end)
+end
+
+local function kids(h)
+  local out = {}
+  if h == nil then return out end
+  local list = call(h, "Children")
+  if type(list) == "table" then
+    for _, c in ipairs(list) do out[#out + 1] = c end
+    return out
+  end
+  local n = tonumber(call(h, "Count")) or 0
+  for i = 1, n do
+    local ok, c = pcall(function() return h[i] end)
+    if ok and c ~= nil then out[#out + 1] = c end
+  end
+  return out
+end
+
+local function oscBase()
+  local ok, b = pcall(function() return ShowData().OSCBase end)
+  if ok then return b end
+end
+
+local function artNet()
+  local ok, a = pcall(function() return Root().DeviceConfigurations.DMXProtocols.ArtNet end)
+  if ok then return a end
+end
+
+local function tcRows(a)
+  local ok, c = pcall(function() return a.ArtNetTimecodeCollect end)
+  if ok then return c end
+end
+
+local function readSetup()
+  local r = { ev = "setup" }
+  local b = oscBase()
+  if b ~= nil then
+    local lines = {}
+    for i, d in ipairs(kids(b)) do
+      lines[#lines + 1] = {
+        i = i, name = display(d, "Name"), port = tonumber(display(d, "Port")),
+        dest = display(d, "DestinationIP"), mode = display(d, "Mode"), prefix = display(d, "Prefix") or "",
+        send = yes(display(d, "Send")), receive = yes(display(d, "Receive")),
+      }
+    end
+    r.osc = { input = yes(display(b, "EnableInput")), output = yes(display(b, "EnableOutput")) }
+    if #lines > 0 then r.osc.lines = lines end
+  end
+  local a = artNet()
+  if a ~= nil then
+    local rows = {}
+    for i, t in ipairs(kids(tcRows(a))) do
+      rows[#rows + 1] = {
+        i = i, enabled = yes(display(t, "Enabled")), mode = display(t, "Mode"),
+        stream = tonumber(display(t, "StreamID")), slot = tonumber(display(t, "TimecodeSlot")),
+      }
+    end
+    r.artnet = { input = yes(display(a, "In")) }
+    if #rows > 0 then r.artnet.timecode = rows end
+  end
+  return r
+end
+
+-- Adds or fixes what Boothmate needs and never removes or switches off anything.
+local function applySetup(want)
+  local changes = {}
+  local function note(fmt, ...) changes[#changes + 1] = string.format(fmt, ...) end
+  local b = oscBase()
+  if b ~= nil and type(want.osc) == "table" then
+    local reopen = false
+    for _, w in ipairs(want.osc) do
+      local port = math.tointeger(tonumber(w.port))
+      if port then
+        local line
+        for _, d in ipairs(kids(b)) do
+          if tonumber(display(d, "Port")) == port then line = d; break end
+        end
+        if line == nil then
+          line = call(b, "Append")
+          if line ~= nil then
+            set(line, "Name", w.name or "Boothmate")
+            set(line, "Mode", "UDP")
+            set(line, "Port", port)
+            set(line, "DestinationIP", w.dest or "127.0.0.1")
+            set(line, "Prefix", w.prefix or "")
+            set(line, "Send", "No")
+            set(line, "Receive", "No")
+            note("OSC line %d added", port)
+            reopen = true
+          end
+        end
+        if line ~= nil then
+          if w.dest and display(line, "DestinationIP") ~= w.dest then
+            set(line, "DestinationIP", w.dest); note("OSC line %d: destination %s", port, w.dest)
+          end
+          if w.send and not yes(display(line, "Send")) then set(line, "Send", "Yes"); note("OSC line %d: Send = Yes", port) end
+          if w.receive and not yes(display(line, "Receive")) then
+            set(line, "Receive", "Yes"); note("OSC line %d: Receive = Yes", port); reopen = true
+          end
+        end
+      end
+    end
+    if not yes(display(b, "EnableOutput")) then set(b, "EnableOutput", "Yes"); note("OSC: Enable Output") end
+    if not yes(display(b, "EnableInput")) then
+      set(b, "EnableInput", "Yes"); note("OSC: Enable Input")
+    elseif reopen then
+      -- A new input port is only opened when the input is switched on again.
+      set(b, "EnableInput", "No"); set(b, "EnableInput", "Yes")
+    end
+  end
+  local a = artNet()
+  if a ~= nil and type(want.artnet_tc) == "table" then
+    local stream = math.tointeger(tonumber(want.artnet_tc.stream)) or 0
+    local slot = math.tointeger(tonumber(want.artnet_tc.slot)) or 1
+    if not yes(display(a, "In")) then set(a, "In", "Yes"); note("Art-Net: Enable Input") end
+    local rows, row = tcRows(a), nil
+    for _, t in ipairs(kids(rows)) do
+      if tostring(display(t, "Mode")) == "Input" and tonumber(display(t, "StreamID")) == stream then row = t; break end
+    end
+    if row == nil then
+      row = call(rows, "Append")
+      if row ~= nil then note("Art-Net timecode input added") end
+    end
+    if row ~= nil then
+      if not yes(display(row, "Enabled")) then set(row, "Enabled", "Yes"); note("Art-Net timecode: enabled") end
+      if tostring(display(row, "Mode")) ~= "Input" then set(row, "Mode", "Input"); note("Art-Net timecode: Mode = Input") end
+      if tonumber(display(row, "StreamID")) ~= stream then set(row, "StreamID", stream); note("Art-Net timecode: stream %d", stream) end
+      if tonumber(display(row, "TimecodeSlot")) ~= slot then set(row, "TimecodeSlot", slot); note("Art-Net timecode: slot %d", slot) end
+    end
+  end
+  for _, c in ipairs(changes) do log("setup: %s", c) end
+  local r = readSetup()
+  if #changes > 0 then r.changes = changes end
+  return r
+end
+
 local function handle(cl, line)
   local ok, msg = pcall(json.decode, line)
   if not ok or type(msg) ~= "table" then return true end
@@ -240,6 +394,12 @@ local function handle(cl, line)
     end
   elseif msg.op == "phase" and cl.ready then
     phase(msg.master)
+  elseif msg.op == "setup" and cl.ready then
+    local ok, r = pcall(readSetup)
+    send(cl, ok and r or { ev = "error", msg = "setup read failed: " .. tostring(r) })
+  elseif msg.op == "setup_apply" and cl.ready then
+    local ok, r = pcall(applySetup, msg)
+    send(cl, ok and r or { ev = "error", msg = "setup failed: " .. tostring(r) })
   end
   return true
 end
