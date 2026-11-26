@@ -4,7 +4,8 @@
 -- objects, names, appearance colours and start state, and the grandMA3 version. Boothmate
 -- connects to this plugin over TCP. The plugin changes only two things, and only when Boothmate
 -- asks: the tempo of speed masters (Master 3.x) for the tempo link, and the OSC lines and the
--- Art-Net timecode input when the user presses "Set up in grandMA3". No other commands are accepted.
+-- Art-Net timecode input when the user presses "Set up in grandMA3", and the plugin itself when the
+-- user presses "Update plugin in grandMA3". No other commands are accepted.
 --
 -- Start:  Plugin "boothmate"                       listen on 127.0.0.1:9002
 --         Plugin "boothmate" "bind=0.0.0.0 token=x" listen on the network, Boothmate must send token x
@@ -18,10 +19,13 @@
 --                        {"op":"setup"}                         report OSC lines and Art-Net timecode input
 --                        {"op":"setup_apply","osc":[{port,dest,send,receive,name,prefix}],
 --                         "artnet_tc":{stream,slot}}             add or fix them, then report
+--                        {"op":"update","version":"0.4.0","xml":"...","lua":"..."}
+--                                                               replace this plugin (see selfUpdate)
 --   plugin -> Boothmate  {"ev":"hello","plugin":"0.1.0","ma":"2.5.1.1"}
 --                        {"ev":"page","page":1,"executors":[{no,class,obj,name,addr,color,active,fader,cue}]}
 --                        {"ev":"setup","osc":{input,output,lines:[...]},"artnet":{input,timecode:[...]},
 --                         "changes":["..."]}
+--                        {"ev":"update","state":"restarting"|"failed","version":"...","msg":"..."}
 --                        {"ev":"error","msg":"..."}
 --
 -- Change detection: HookObjectChange on every assigned object, its appearance and the pools
@@ -35,11 +39,12 @@ local myHandle    = select(4, ...)
 local socket = require("socket")
 local json   = require("json")
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 local DEFAULT_PORT = 9002
 local SNAPSHOT_MIN_INTERVAL = 0.1 -- seconds between page snapshots
 local EXEC_ROWS = { 1, 2, 3, 4 }   -- executor numbers <row>01 .. <row>99
 local EXEC_COLS = 99
+local MAX_LINE = 1024 * 1024        -- an update message carries the whole plugin
 
 _G.__boothmate = _G.__boothmate or { running = false }
 local S = _G.__boothmate
@@ -373,6 +378,133 @@ local function applySetup(want)
   return r
 end
 
+---------------------------------------------------------------------------------------------
+-- Self-update. Lua cannot reload itself, so the plugin writes the new files into the grandMA3
+-- library, stores a macro that deletes, imports and restarts it (the sequence verified in
+-- gma3-mcp KB-02), fires the macro and stops. The new plugin deletes the macro a few seconds
+-- after it started. _G.__boothmate survives ReloadAllPlugins, so it can find the macro.
+---------------------------------------------------------------------------------------------
+
+local UPDATE_MACRO = "Boothmate plugin update"
+local UPDATE_FILES = { xml = "boothmate.xml", lua = "boothmate.lua" }
+local MACRO_CLEANUP_DELAY = 5 -- seconds after start
+
+-- The library folder that `Import Plugin Library` reads: datapools/plugins, which onPC puts on
+-- package.path (KB-02), or what GetPath reports.
+local function pluginLibrary()
+  for entry in tostring(package.path or ""):gmatch("[^;]+") do
+    local dir = entry:match("^(.-)[/\\]%?%.lua$")
+    if dir and dir:gsub("\\", "/"):lower():find("datapools/plugins$") then return dir end
+  end
+  local ok, p = pcall(function() return GetPath(Enums.PathType.UserPlugins) end)
+  if ok and type(p) == "string" and p ~= "" then return p end
+  return nil
+end
+
+local function writeFile(path, data)
+  local tmp = path .. ".new"
+  local f, err = io.open(tmp, "wb")
+  if not f then return false, err end
+  local ok, werr = f:write(data)
+  f:close()
+  if not ok then os.remove(tmp); return false, werr end
+  os.remove(path) -- rename does not replace on Windows
+  local r, rerr = os.rename(tmp, path)
+  if not r then return false, rerr end
+  f = io.open(path, "rb")
+  local back = f and f:read("a")
+  if f then f:close() end
+  if back ~= data then return false, "read back differs" end
+  return true
+end
+
+local function macroAt(n)
+  local ok, l = pcall(ObjectList, "Macro " .. n)
+  if ok and type(l) == "table" then return l[1] end
+  return nil
+end
+
+local function deleteMacro(n)
+  local m = macroAt(n)
+  if m ~= nil and tostring(field(m, "name")) == UPDATE_MACRO then
+    Cmd(string.format("Delete Macro %d /NoConfirmation", n))
+    return true
+  end
+  return false
+end
+
+-- A free macro slot after the last used one; an old update macro is removed first.
+local function updateMacroSlot()
+  local top = 0
+  for _, m in ipairs(kids(field(DataPool(), "Macros"))) do
+    local no = tonumber(field(m, "no"))
+    if no and tostring(field(m, "name")) == UPDATE_MACRO then deleteMacro(no)
+    elseif no and no > top then top = no end
+  end
+  return top + 1
+end
+
+local function storeMacro(n, lines)
+  Cmd(string.format("Store Macro %d /NoConfirmation", n))
+  local m = macroAt(n)
+  if m == nil then error("could not store Macro " .. n, 0) end
+  m:Set("Name", UPDATE_MACRO)
+  for i = (tonumber(call(m, "Count")) or 0) + 1, #lines do
+    Cmd(string.format("Store Macro %d.%d /NoConfirmation", n, i))
+  end
+  for i, l in ipairs(lines) do
+    local h = m:Ptr(i)
+    if h == nil then error(string.format("Macro %d has no line %d", n, i), 0) end
+    h:Set("Command", l[1])
+    h:Set("Wait", l[2])
+    if tostring(h:Get("Command")) ~= l[1] then error(string.format("Macro %d line %d did not take the command", n, i), 0) end
+  end
+end
+
+-- The start arguments of this run, so the new plugin listens where the old one did.
+local function startArgs()
+  local a = {}
+  if S.bind ~= "127.0.0.1" then a[#a + 1] = "bind=" .. S.bind end
+  if S.port ~= DEFAULT_PORT then a[#a + 1] = "port=" .. S.port end
+  if (S.token or "") ~= "" then a[#a + 1] = "token=" .. S.token end
+  return table.concat(a, " ")
+end
+
+local function selfUpdate(msg)
+  local version = tostring(msg.version or "")
+  if not version:match("^%d+%.%d+%.%d+$") then error("bad version", 0) end
+  if type(msg.lua) ~= "string" or not msg.lua:find('local VERSION = "' .. version .. '"', 1, true) then
+    error("the new plugin code is not version " .. version, 0)
+  end
+  local compiled, cerr = load(msg.lua, "=boothmate.lua", "t")
+  if not compiled then error("the new plugin code does not compile: " .. tostring(cerr), 0) end
+  if type(msg.xml) ~= "string" or not msg.xml:find('<UserPlugin Name="boothmate"', 1, true)
+     or not msg.xml:find('FileName="boothmate.lua"', 1, true) then
+    error("the new plugin XML is not Boothmate's", 0)
+  end
+  local args = startArgs()
+  if args:find('"', 1, true) then error("the start arguments contain a quote", 0) end
+  local slot = tonumber(field(S.pluginObject, "no"))
+  if not slot then error("cannot find this plugin's pool number", 0) end
+  local dir = pluginLibrary()
+  if not dir then error("cannot find the grandMA3 plugin library", 0) end
+  for k, name in pairs(UPDATE_FILES) do
+    local ok, err = writeFile(dir .. "/" .. name, msg[k])
+    if not ok then error(string.format("cannot write %s/%s: %s", dir, name, tostring(err)), 0) end
+  end
+  local start = 'Plugin "boothmate"' .. (args ~= "" and (' "' .. args .. '"') or "")
+  local n = updateMacroSlot()
+  storeMacro(n, {
+    { "Echo Boothmate: updating the plugin to " .. version, "1.5" },
+    { string.format("Delete Plugin %d /NoConfirmation", slot), "1" },
+    { string.format('Import Plugin Library "%s" At Plugin %d', UPDATE_FILES.xml, slot), "1" },
+    { "ReloadAllPlugins", "2" },
+    { start, "Follow" },
+  })
+  log("updating to %s: files in %s, Macro %d replaces Plugin %d", version, dir, n, slot)
+  return n
+end
+
 local function handle(cl, line)
   local ok, msg = pcall(json.decode, line)
   if not ok or type(msg) ~= "table" then return true end
@@ -400,6 +532,19 @@ local function handle(cl, line)
   elseif msg.op == "setup_apply" and cl.ready then
     local ok, r = pcall(applySetup, msg)
     send(cl, ok and r or { ev = "error", msg = "setup failed: " .. tostring(r) })
+  elseif msg.op == "update" and cl.ready then
+    local ok, r = pcall(selfUpdate, msg)
+    if not ok then
+      log("update failed: %s", tostring(r))
+      send(cl, { ev = "update", state = "failed", version = msg.version, msg = tostring(r) })
+    else
+      send(cl, { ev = "update", state = "restarting", version = msg.version })
+      flush(cl)
+      S.updateMacro = r
+      S.stop = true
+      -- The macro waits before deleting this plugin, so this run ends first.
+      Cmd(string.format("Go+ Macro %d", r))
+    end
   end
   return true
 end
@@ -414,7 +559,7 @@ local function serviceClient(cl)
     cl.buf = rest
     if not handle(cl, line) then flush(cl); return false end
   end
-  if #cl.buf > 65536 then return false end
+  if #cl.buf > MAX_LINE then return false end
   if err == "closed" then return false end
   return flush(cl)
 end
@@ -448,6 +593,10 @@ local function loop()
       elseif cl.ready then
         anyReady = true
       end
+    end
+    if S.updateMacro and not S.stop and socket.gettime() - S.started >= MACRO_CLEANUP_DELAY then
+      pcall(deleteMacro, S.updateMacro)
+      S.updateMacro = nil
     end
     if anyReady then
       -- Handles are new userdata on every call: compare addresses.
@@ -502,6 +651,7 @@ local function Main(display_handle, argument)
   end
   S.bind, S.port, S.token = opts.bind, opts.port, opts.token
   S.running, S.stop, S.clients, S.hooks, S.hooked, S.dirty = true, false, {}, {}, {}, false
+  S.started = socket.gettime()
   -- HookObjectChange needs the plugin object, not this component.
   S.pluginObject = call(myHandle, "Parent") or myHandle
   -- The loop runs inside this call and yields every frame; onPC calls Cleanup when it returns.

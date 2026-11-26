@@ -5,6 +5,9 @@
 --
 --   lua5.4 tools/fake-ma3.lua [seconds]      needs LuaSocket and dkjson (or another "json" module)
 --
+-- Plugin self-update: Store/Delete/Go+ Macro work, the macro's Import and Plugin lines restart the
+-- plugin from the library (FAKE_MA3_LIBRARY, default a temp folder).
+--
 -- Timeline: cues run on sequences 1 and 2, fader 2 moves, sequence 3 is relabelled (hook), the
 -- page changes to 2 and back.
 
@@ -93,7 +96,39 @@ local artTc = collection("ArtNetTimecodeCollect", "Art-Net-Timecode", { Enabled 
 local artNet = item("ArtNet", { In = "No", ArtNetTimecodeCollect = artTc })
 Root = function() return { DeviceConfigurations = { DMXProtocols = { ArtNet = artNet } } } end
 
-DataPool = function() return { Sequences = object("Pool", "14.14.1.7", {}) } end
+-- Macros and the plugin library, for the self-update (see selfUpdate in lua/boothmate.lua).
+local library = os.getenv("FAKE_MA3_LIBRARY") or (os.tmpname() .. "-gma3_library")
+os.execute('mkdir -p "' .. library .. '/datapools/plugins"')
+package.path = library .. "/datapools/plugins/?.lua;" .. package.path
+local macros = collection("Macros", "Macro", {}, {})
+local function macroLine() return item("MacroLine", { Command = "", Wait = "Follow" }) end
+local function macroNo(n)
+  for i, m in ipairs(macros.items) do if m.no == n then return m, i end end
+end
+ObjectList = function(ref)
+  local n = tonumber(ref:match("^Macro (%d+)$"))
+  return { n and macroNo(n) or nil }
+end
+local runMacro -- set below; macros run after the plugin's frame, like on the console
+Cmd = function(cmd)
+  print("fake-ma3: Cmd " .. cmd)
+  local n = tonumber(cmd:match("^Store Macro (%d+) /NoConfirmation$"))
+  if n and not macroNo(n) then
+    local m = item("Macro", { no = n, name = "Macro " .. n, lines = {} })
+    function m:Set(p, v) if p == "Name" then self.name = v else self[p] = v end end
+    function m:Count() return #self.lines end
+    function m:Ptr(i) return self.lines[i] end
+    macros.items[#macros.items + 1] = m
+    return
+  end
+  local mn, ln = cmd:match("^Store Macro (%d+)%.(%d+) /NoConfirmation$")
+  if mn then local m = macroNo(tonumber(mn)); m.lines[tonumber(ln)] = macroLine(); return end
+  n = tonumber(cmd:match("^Delete Macro (%d+) /NoConfirmation$"))
+  if n then local _, i = macroNo(n); if i then table.remove(macros.items, i) end; return end
+  n = tonumber(cmd:match("^Go%+ Macro (%d+)$"))
+  if n then runMacro(macroNo(n)) end
+end
+DataPool = function() return { Sequences = object("Pool", "14.14.1.7", {}), Macros = macros } end
 ShowData = function() return { Appearances = object("Pool", "14.6", {}), OSCBase = oscBase } end
 Version = function() return "2.5.1.1" end
 Printf = function(s) print(s) end
@@ -126,9 +161,40 @@ end
 
 -- Run ------------------------------------------------------------------------------------------
 
-local chunk = assert(loadfile(here .. "/../lua/boothmate.lua"))
-local Main, Cleanup = chunk("boothmate", "boothmate", {}, { Parent = function() return "plugin" end })
-local co = coroutine.create(function() Main(nil, "") end)
+local pluginObject = { no = 1, name = "boothmate" }
+local Main, Cleanup, co
+local function start(file, argument)
+  local chunk = assert(loadfile(file))
+  Main, Cleanup = chunk("boothmate", "boothmate", {}, { Parent = function() return pluginObject end })
+  co = coroutine.create(function() Main(nil, argument) end)
+end
+start(here .. "/../lua/boothmate.lua", "")
+
+-- Runs the macro lines this fake understands, each after the previous line's wait.
+local pending = {}
+runMacro = function(m)
+  local t = socket.gettime()
+  for _, l in ipairs(m.lines) do
+    pending[#pending + 1] = { t, l.Command }
+    t = t + (tonumber(l.Wait) or 0)
+  end
+end
+local imported
+local function macroCommand(cmd)
+  print("fake-ma3: macro " .. cmd)
+  local file = cmd:match('^Import Plugin Library "([^"]+)" At Plugin 1$')
+  if file then
+    local f = assert(io.open(library .. "/datapools/plugins/" .. file))
+    local xml = f:read("a"); f:close()
+    imported = library .. "/datapools/plugins/" .. xml:match('FileName="([^"]+)"')
+    return
+  end
+  local arg = cmd:match('^Plugin "boothmate" "(.*)"$') or (cmd == 'Plugin "boothmate"' and "")
+  if arg then
+    if coroutine.status(co) ~= "dead" then error("the old plugin still runs") end
+    start(assert(imported, "nothing imported"), arg)
+  end
+end
 
 local t0 = socket.gettime()
 local events = {
@@ -157,9 +223,14 @@ while socket.gettime() - t0 < duration do
     seqs[2].fader = 100 - (t - fadeFrom) / (fadeTo - fadeFrom) * 100 * 0.6
     osc("/14.14.1.7.2", "FaderMaster", 3, seqs[2].fader, seqs[2].name)
   end
-  local ok, err = coroutine.resume(co)
-  if not ok then error(err) end
-  if coroutine.status(co) == "dead" then break end
+  while pending[1] and socket.gettime() >= pending[1][1] do macroCommand(table.remove(pending, 1)[2]) end
+  if coroutine.status(co) ~= "dead" then
+    local ok, err = coroutine.resume(co)
+    if not ok then error(err) end
+    if coroutine.status(co) == "dead" then Cleanup() end
+  elseif not pending[1] then
+    break
+  end
   socket.sleep(1 / 30)
 end
 Cleanup()

@@ -29,6 +29,11 @@ pub enum Event {
         msg: String,
     },
     Setup(crate::setup::Report),
+    Update {
+        state: String,
+        #[serde(default)]
+        msg: Option<String>,
+    },
 }
 
 /// Asks the plugin for the OSC and Art-Net setup (plugin 0.3.0+), or to fix it.
@@ -141,6 +146,7 @@ fn handle_line(app: &Arc<App>, line: &str) {
             *app.profile.write().unwrap() = p.clone();
             let supported = crate::tempo::version_at_least(&plugin, crate::setup::SETUP_PLUGIN);
             app.update(|st| {
+                crate::plugin_update::on_hello(st, &plugin);
                 st.ma3_setup = crate::setup::Ma3Setup {
                     supported,
                     ..Default::default()
@@ -175,6 +181,9 @@ fn handle_line(app: &Arc<App>, line: &str) {
                 s.report = Some(r);
                 s.updated = Some(crate::state::now_ms());
             });
+        }
+        Event::Update { state, msg } => {
+            app.update(|st| crate::plugin_update::on_event(st, &state, msg));
         }
         Event::Error { msg } => {
             crate::log::warn(&format!("plugin: {msg}"));
@@ -220,6 +229,17 @@ mod tests {
             Event::Page {
                 page: Some(2),
                 executors: vec![]
+            }
+        );
+
+        let update: Event =
+            serde_json::from_str(r#"{"ev":"update","state":"failed","version":"0.4.0","msg":"x"}"#)
+                .unwrap();
+        assert_eq!(
+            update,
+            Event::Update {
+                state: "failed".into(),
+                msg: Some("x".into())
             }
         );
     }

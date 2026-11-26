@@ -292,8 +292,12 @@
     <p class="muted" style="margin-top: 0;">OSC lines Boothmate needs, and the Art-Net timecode input when timecode is on. "Set up" adds or fixes only these and never removes anything. Save the show in grandMA3 afterwards.</p>
     <div id="setup-checks" class="checks"></div>
     <p id="setup-msg" class="hint" hidden></p>
-    <h2 style="margin-top: 20px;">Plugin</h2>
-    <p id="plugin-ver"></p>
+    <div class="bar" style="justify-content: space-between; margin: 20px 0 8px;">
+      <h2 style="margin: 0;">Plugin</h2>
+      <button id="plugin-update" title="The plugin writes the new files into the grandMA3 library and replaces itself through a macro">Update plugin in grandMA3</button>
+    </div>
+    <p id="plugin-ver" style="margin-top: 0;"></p>
+    <p id="plugin-update-msg" class="hint" hidden></p>
     <table id="plugin-libs"></table>
     <p class="muted">Then in grandMA3: open the Plugin pool, edit a free slot (or the old Boothmate plugin), press Import and pick <b>boothmate</b> from the library. Start it with <code>Plugin "boothmate"</code>; after an update, run it again.</p>
     <p id="plugin-msg" class="hint" hidden></p>
@@ -698,7 +702,7 @@ function health(st) {
   const outdated = c.plugin_connected && pluginInfo && pluginInfo.bundled && older(c.plugin_version, pluginInfo.bundled);
   out.push(outdated
     ? { key: "ma3", name: "grandMA3", tab: "ma3", level: "warn", detail: `Plugin ${c.plugin_version} is older than ${pluginInfo.bundled}`,
-        hint: "Copy the new plugin in the grandMA3 tab and import it again." }
+        hint: st.plugin_update.supported ? "Update it in the grandMA3 tab with one click." : "Copy the new plugin in the grandMA3 tab and import it again." }
     : c.plugin_connected
     ? { key: "ma3", name: "grandMA3", tab: "ma3", level: c.profile_fallback ? "warn" : "ok",
         detail: `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`,
@@ -1061,8 +1065,23 @@ function renderPlugin(st) {
   const c = st.connections, p = pluginInfo;
   if (!p) return;
   const running = c.plugin_connected ? c.plugin_version : null;
+  const u = st.plugin_update, outdated = running && older(running, p.bundled);
   setHtml($("plugin-ver"), `This Boothmate comes with plugin <b>${esc(p.bundled || "?")}</b>. ` +
-    (running ? (older(running, p.bundled) ? `grandMA3 runs the older <b>${esc(running)}</b>: copy it and import it again.` : `grandMA3 runs <b>${esc(running)}</b>.`) : "The plugin is not connected."));
+    (running ? (outdated ? `grandMA3 runs the older <b>${esc(running)}</b>: ` + (u.supported ? `press <b>Update plugin in grandMA3</b>.` : `copy it below and import it once by hand; from 0.4.0 on it updates itself.`) : `grandMA3 runs <b>${esc(running)}</b>.`) : "The plugin is not connected."));
+  const pending = u.state === "sent" || u.state === "restarting";
+  const late = pending && u.updated && Date.now() - u.updated > 30000;
+  $("plugin-update").hidden = !(outdated && u.supported) && !pending;
+  $("plugin-update").disabled = pending && !late;
+  const text = {
+    sent: `Sending plugin ${u.target} to grandMA3 …`,
+    restarting: late ? `No answer from plugin ${u.target} yet. Look at the grandMA3 command line feedback; if the plugin is stopped, start it with Plugin "boothmate".`
+      : `grandMA3 is replacing the plugin with ${u.target} (macro "Boothmate plugin update", a few seconds) …`,
+    done: `Done: ${u.msg || ""}`,
+    failed: `Update failed: ${u.msg || ""} You can still copy the plugin below and import it by hand.`,
+  }[u.state];
+  $("plugin-update-msg").hidden = !text;
+  if (text) $("plugin-update-msg").textContent = text;
+  if (u.state === "done" && u.updated !== pluginDoneSeen) { pluginDoneSeen = u.updated; loadPlugin(); }
   setHtml($("plugin-libs"), p.libraries.length ? p.libraries.map((l, i) => `<tr>
       <td>${l.kind === "drive" ? "This drive (show stick)" : "This computer (onPC)"}</td>
       <td><code>${esc(l.path)}</code></td>
@@ -1070,6 +1089,12 @@ function renderPlugin(st) {
       <td><button data-lib="${i}">${l.installed === p.bundled ? "Copy again" : l.installed ? "Update plugin" : "Copy plugin"}</button></td></tr>`).join("")
     : `<tr><td class="muted">No grandMA3 library found on this computer or drive. Import <code>lua/boothmate.xml</code> from the Boothmate folder instead.</td></tr>`);
 }
+let pluginDoneSeen = null;
+$("plugin-update").onclick = async () => {
+  if (!confirm("Update the Boothmate plugin in grandMA3?\n\ngrandMA3 runs ReloadAllPlugins, which reloads every plugin, and restarts Boothmate's plugin. Do it between songs, not during a cue. Save the show afterwards to keep the new plugin.")) return;
+  const r = await fetch("/api/plugin/update", { method: "POST" });
+  if (!r.ok) { $("plugin-update-msg").hidden = false; $("plugin-update-msg").textContent = `Failed: ${await r.text()}`; }
+};
 $("plugin-libs").onclick = async e => {
   const b = e.target.closest("[data-lib]");
   if (!b || !pluginInfo) return;
