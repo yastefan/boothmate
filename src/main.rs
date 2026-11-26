@@ -40,6 +40,8 @@ pub struct App {
     pub osc_out: std::net::UdpSocket,
     /// Which modules run; the MIDI and DJ Link tasks start and stop with it.
     pub modules: watch::Sender<state::Modules>,
+    /// Track data fetched from the players (DJ Link stage 3).
+    pub tracks: cdj::metadata::Store,
 }
 
 impl App {
@@ -175,6 +177,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         plugin_ops: tokio::sync::broadcast::channel(64).0,
         osc_out,
         modules: watch::channel(modules).0,
+        tracks: Default::default(),
     });
 
     let rt = tokio::runtime::Builder::new_current_thread()

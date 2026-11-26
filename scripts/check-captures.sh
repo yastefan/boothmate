@@ -16,4 +16,5 @@ cargo build --quiet
 ./target/debug/boothmate --check $(find "$dir/doc/assets" -name '*.pcap' -o -name '*.pcapng' | sort) "$@" > target/captures/report.txt \
   || { cat target/captures/report.txt; echo "Some DJ Link packets were not understood, see above."; exit 1; }
 grep -E 'DJ Link$|should be' target/captures/report.txt
+echo "Track metadata (dbserver): $(grep -c ' messages' target/captures/report.txt) TCP streams, $(grep -c '^    beat grid' target/captures/report.txt) beat grids, $(grep -c '^    waveform detail' target/captures/report.txt) waveforms decoded"
 echo "All captures OK. Full report: target/captures/report.txt"

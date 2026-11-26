@@ -3,7 +3,7 @@
 use crate::midi::device::{Kind, Relative};
 use crate::midi::mapping::{self, Learn};
 use crate::App;
-use axum::extract::State as Ax;
+use axum::extract::{Path, State as Ax};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse};
@@ -30,6 +30,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/midi/test", post(test_midi))
         .route("/api/cdj/simulate", post(simulate_cdj))
         .route("/api/cdj/record", post(record_cdj))
+        .route("/api/cdj/track/{key}", get(cdj_track))
         .route("/api/tempo", post(set_tempo))
         .route("/api/timecode", post(set_timecode))
         .route("/api/log", post(recent_log))
@@ -160,6 +161,18 @@ async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoRe
 }
 
 /// The bundled plugin version and the grandMA3 libraries it can be copied to.
+/// Track data (waveform, beat grid, cues, phrases) by the key in the player's `meta`.
+async fn cdj_track(Ax(app): Ax<Arc<App>>, Path(key): Path<String>) -> impl IntoResponse {
+    match app.tracks.get(&key) {
+        Some(t) => (
+            [(axum::http::header::CACHE_CONTROL, "max-age=3600")],
+            Json(serde_json::to_value(&*t).unwrap_or_default()),
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "no such track").into_response(),
+    }
+}
+
 async fn plugin_info(Ax(app): Ax<Arc<App>>) -> impl IntoResponse {
     Json(crate::setup::plugin_info(&app.dir))
 }

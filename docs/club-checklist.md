@@ -31,14 +31,17 @@ Per player model (NXS2 and 3000):
 6. [ ] Sync on and off on a player: the **Sync** chip follows.
 7. [ ] Channel fader up and down: **On air** follows (needs the players on mixer channels with on-air display).
 8. [ ] Load an unanalysed track, if there is one: BPM may be missing, the card must not show nonsense.
-9. [ ] Unplug a player's network cable: its card disappears after about 5 s. Plug it back in: it comes back.
+9. [ ] Track data: within a few seconds of loading, the card shows title, artist and key, and the timeline shows the waveform, beat grid, hot cues and (for tracks with phrase analysis in rekordbox 6+) the coloured phrases. The log says `track data for ... from player N`. If the card says **No track data**, note the message.
+10. [ ] Track data over Link: load a track from the other player's USB. The data still comes (from the player with the USB).
+11. [ ] Play an NXS2: the timeline's playhead moves smoothly and sits on the beat lines; the phrase box ("Chorus 1 in 12 beats") counts down with the player's own phrase display (CDJ-3000).
+12. [ ] Unplug a player's network cable: its card disappears after about 5 s. Plug it back in: it comes back.
 
 Also:
 
-- [ ] Four or more players: everything still works, and no player shows a number conflict or drops off the link while Boothmate is running.
+- [ ] Four or more players: everything still works, and no player shows a number conflict or drops off the link while Boothmate is running. Track data with four players: Boothmate asks as another player's number; check that the players' own Link browsing still works while it loads.
 - [ ] The DJs notice nothing: no player shows a strange device, no link errors.
 
 ## After
 
-- [ ] Stop recording. Copy `logs/djlink-*.pcap` and `logs/boothmate.log` home, with your notes (times, what was pressed, what looked wrong).
+- [ ] Stop recording. Copy `logs/djlink-*.pcap`, `logs/dbserver-*.pcap` (track data queries) and `logs/boothmate.log` home, with your notes (times, what was pressed, what looked wrong).
 - [ ] At home: `boothmate --check logs/djlink-*.pcap` prints what Boothmate understood; `boothmate --replay logs/djlink-<...>.pcap` plays the recording into the web page as if the CDJs were there.

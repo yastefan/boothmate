@@ -1,6 +1,8 @@
 //! `boothmate --check <capture>`: runs a packet capture through the DJ Link parser and tracker
 //! and prints what Boothmate understood. For club recordings and public captures.
 
+use super::analysis::{self};
+use super::dbserver;
 use super::packet::{self, Packet, ANNOUNCE_PORT, BEAT_PORT, STATUS_PORT};
 use super::pcap::{self, Datagram};
 use super::tracker::{CdjState, Event};
@@ -51,6 +53,166 @@ struct PlayerStats {
 
 /// The report, and the number of packets of a kind Boothmate reads that it could not parse.
 pub fn report(name: &str, data: &[u8]) -> Result<(String, u32), String> {
+    let (mut out, problems) = report_udp(name, data)?;
+    let (db, db_problems) = dbserver(data);
+    out.push_str(&db);
+    Ok((out, problems + db_problems))
+}
+
+/// The dbserver (track metadata) conversations in a capture: every message must parse, and
+/// the track data in the answers is decoded like Boothmate does it.
+fn dbserver(data: &[u8]) -> (String, u32) {
+    let Ok(streams) = pcap::read_tcp(data) else {
+        return (String::new(), 0);
+    };
+    let mut out = String::new();
+    let mut problems = 0;
+    let answers: Vec<_> = streams
+        .iter()
+        .filter(|s| {
+            s.data.len() > 5
+                && s.src_port != dbserver::PORT_QUERY
+                && s.dst_port != dbserver::PORT_QUERY
+        })
+        .filter(|s| s.data.starts_with(&dbserver::GREETING))
+        .collect();
+    if answers.is_empty() {
+        return (out, 0);
+    }
+    let _ = writeln!(out, "\nTrack metadata (dbserver, TCP):");
+    for s in answers {
+        let msgs = match dbserver::decode_stream(&s.data) {
+            Ok(m) => m,
+            Err(e) => {
+                problems += 1;
+                let _ = writeln!(
+                    out,
+                    "  {}:{} -> {}:{}: not understood: {}",
+                    s.src, s.src_port, s.dst, s.dst_port, e.0
+                );
+                continue;
+            }
+        };
+        let used: usize = {
+            let mut n = 5;
+            for m in &msgs {
+                n += m.encode().len();
+            }
+            n
+        };
+        let rest = s.data.len().saturating_sub(used);
+        let server = msgs.iter().any(|m| m.kind >= 0x4000);
+        let _ = writeln!(
+            out,
+            "  {}:{} -> {}:{}: {} messages{}",
+            s.src,
+            s.src_port,
+            s.dst,
+            s.dst_port,
+            msgs.len(),
+            if rest > 0 {
+                format!(", {rest} bytes not understood (should be 0)")
+            } else {
+                String::new()
+            }
+        );
+        if rest > 0 {
+            problems += 1;
+        }
+        if !server {
+            continue;
+        }
+        let mut menu = vec![];
+        for m in &msgs {
+            match m.kind {
+                dbserver::MENU_ITEM => menu.push(m.clone()),
+                dbserver::MENU_FOOTER => {
+                    let mut x = analysis::TrackData::default();
+                    analysis::apply_metadata(&mut x, &menu);
+                    if x.title.is_some() && x.duration_s.is_some() {
+                        let _ = writeln!(
+                            out,
+                            "    track \"{}\" by {}, {} s, {:.2} BPM, key {}",
+                            x.title.unwrap_or_default(),
+                            x.artist.unwrap_or_default(),
+                            x.duration_s.unwrap_or(0),
+                            x.bpm.unwrap_or(0.0),
+                            x.musical_key.unwrap_or_default()
+                        );
+                    }
+                    menu.clear();
+                }
+                0x4602 => {
+                    if let Some(g) = m.blob(3).and_then(analysis::grid) {
+                        let ok = g.ms.windows(2).all(|w| w[0] < w[1])
+                            && g.bar.windows(2).all(|w| w[1] == w[0] % 4 + 1);
+                        if !ok {
+                            problems += 1;
+                        }
+                        let _ = writeln!(
+                            out,
+                            "    beat grid: {} beats, first at {} ms{}",
+                            g.ms.len(),
+                            g.ms[0],
+                            if ok { "" } else { ", NOT in order (should be)" }
+                        );
+                    }
+                }
+                0x4402 => {
+                    if let Some(w) = m.blob(3).and_then(analysis::mono_preview) {
+                        let _ = writeln!(out, "    waveform preview: {} columns", w.columns);
+                    }
+                }
+                0x4a02 => {
+                    if let Some(w) = m.blob(3).and_then(analysis::mono_detail) {
+                        let _ = writeln!(
+                            out,
+                            "    waveform detail: {} columns = {:.1} s",
+                            w.columns,
+                            w.columns as f32 / analysis::DETAIL_PER_S as f32
+                        );
+                    }
+                }
+                0x4702 => {
+                    let c = analysis::cues(m.blob(3).unwrap_or(&[]));
+                    let _ = writeln!(
+                        out,
+                        "    cues: {}",
+                        c.iter()
+                            .map(|c| format!(
+                                "{}{} ms",
+                                if c.hot > 0 {
+                                    format!("hot {} ", (b'A' + c.hot - 1) as char)
+                                } else {
+                                    String::new()
+                                },
+                                c.ms
+                            ))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+                0x4e02 => {
+                    let c = analysis::cues_ext(m.blob(3).unwrap_or(&[]));
+                    let _ = writeln!(out, "    extended cues: {}", c.len());
+                }
+                0x4f02 => {
+                    let b = m.blob(3).unwrap_or(&[]);
+                    let _ = writeln!(
+                        out,
+                        "    analysis tag {}: {} bytes",
+                        String::from_utf8_lossy(b.get(..4).unwrap_or(&[])),
+                        b.len()
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    (out, problems)
+}
+
+fn report_udp(name: &str, data: &[u8]) -> Result<(String, u32), String> {
     let all = pcap::read(data).map_err(|e| format!("{name}: {e}"))?;
     let total = all.len();
     let dl = djlink(all);
