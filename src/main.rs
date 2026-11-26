@@ -37,6 +37,16 @@ pub struct App {
     pub cdj_replay: Option<PathBuf>,
     /// Socket for OSC input to grandMA3 (executor keys and faders).
     pub osc_out: std::net::UdpSocket,
+    /// Which modules run; the MIDI and DJ Link tasks start and stop with it.
+    pub modules: watch::Sender<state::Modules>,
+}
+
+impl App {
+    /// Waits until `pred` holds for the module switches.
+    pub async fn wait_modules(&self, pred: impl Fn(&state::Modules) -> bool) {
+        let mut rx = self.modules.subscribe();
+        let _ = rx.wait_for(|m| pred(m)).await;
+    }
 }
 
 impl App {
@@ -144,6 +154,8 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
     st.connections.osc_send = config.osc.send.clone();
     st.connections.plugin_addr = format!("{}:{}", config.plugin.host, config.plugin.port);
     st.connections.profile = start.id.clone();
+    let modules = state::Modules::from_config(&config);
+    st.modules = modules;
 
     let osc_out = std::net::UdpSocket::bind("0.0.0.0:0")
         .map_err(|e| format!("cannot open OSC output socket: {e}"))?;
@@ -161,6 +173,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         cdj_events: tokio::sync::broadcast::channel(256).0,
         plugin_ops: tokio::sync::broadcast::channel(64).0,
         osc_out,
+        modules: watch::channel(modules).0,
     });
 
     let rt = tokio::runtime::Builder::new_current_thread()

@@ -10,6 +10,7 @@
     --ok: #3ccf7a; --warn: #f0b429; --bad: #ef5350; --accent: #4f9cff;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   header h1 { font-size: 16px; margin: 0 8px 0 0; letter-spacing: .02em; }
@@ -168,6 +169,10 @@
   .lv-health .dot { width: 12px; height: 12px; }
   .lv-health .msg { margin-left: auto; font-weight: 600; }
   @media (max-width: 700px) { header { position: static; } }
+  .modbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 12px; }
+  .modbar h2 { margin: 0; }
+  button.switch { min-height: 32px; padding: 0 14px; }
+  button.switch.on { background: #1d3a2a; border-color: #2f6b47; color: #9ff0bf; }
   .lv-empty { color: var(--muted); font-size: 18px; padding: 40px 0; text-align: center; }
 </style>
 </head>
@@ -178,7 +183,6 @@
     <button data-tab="status"><span class="dot" id="dot-status"></span>Status</button>
     <button data-tab="cdj"><span class="dot" id="dot-cdj"></span>CDJs</button>
     <button data-tab="mapping"><span class="dot" id="dot-mapping"></span>MIDI &amp; Mapping</button>
-    <button data-tab="test">Test controller</button>
     <button data-tab="ma3"><span class="dot" id="dot-ma3"></span>grandMA3</button>
     <button data-tab="log">Log</button>
     <button data-tab="live">Live</button>
@@ -189,16 +193,6 @@
   <div id="fallback" class="warnbox" hidden></div>
   <div id="offline" class="badbox" hidden>Boothmate is not reachable. Is it still running?</div>
 
-  <!-- Learn bar: shared by the mapping and test controller tabs. -->
-  <section id="learnbar" hidden>
-    <div class="bar">
-      <button id="learn">Learn</button>
-      <label><input type="checkbox" id="follow" checked> new mappings follow the page</label>
-      <span id="devices" class="muted"></span>
-    </div>
-    <p id="learn-hint" class="hint" hidden></p>
-    <p class="muted" id="last-input"></p>
-  </section>
 
   <section data-panel="status">
     <div id="summary" class="summary"></div>
@@ -218,13 +212,16 @@
   <section data-panel="live" id="live"></section>
 
   <section data-panel="cdj">
-    <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
-      <h2 style="margin: 0;">DJ Link</h2>
-      <div class="bar">
+    <div class="modbar">
+      <h2>DJ Link</h2>
+      <button id="cdj-on" class="switch" title="Off: no network sockets and no timers. Tempo link and timecode stop too.">On</button>
+      <span class="muted" id="cdj-off-note"></span>
+      <div class="bar" id="cdj-tools" style="margin-left: auto;">
         <button id="cdj-rec" title="Record all DJ Link packets to logs/djlink-*.pcap, for Wireshark or boothmate --replay">Record</button>
         <button id="cdj-sim" title="Two fake players and a mixer, to try this without CDJs">Simulator</button>
       </div>
     </div>
+    <div id="cdj-body">
     <p class="muted" id="cdj-info" style="margin: 0 0 8px;"></p>
     <div class="players" id="cdj-players"></div>
     <h2 style="margin-top: 20px;">Timecode to grandMA3</h2>
@@ -241,9 +238,29 @@
       <table><thead><tr><th>On</th><th>Executor</th><th>Page</th><th>Beats of</th><th></th></tr></thead><tbody id="action-rows"></tbody></table>
       <p><button id="action-add">Add beat action</button></p>
     </div>
+    </div>
   </section>
 
   <section data-panel="mapping">
+    <div class="modbar">
+      <h2>MIDI</h2>
+      <button id="midi-on" class="switch" title="Off: no MIDI thread, no port scanning. Mappings stay.">On</button>
+      <span class="muted" id="midi-off-note"></span>
+      <button id="vc-on" class="switch" title="A controller in this page: 8 RGB buttons, 8 motor faders, 4 encoders. For trying mappings without hardware.">Virtual controller</button>
+    </div>
+    <div id="learnbar" hidden>
+      <div class="bar">
+        <button id="learn">Learn</button>
+        <label><input type="checkbox" id="follow" checked> new mappings follow the page</label>
+        <span id="devices" class="muted"></span>
+      </div>
+      <p id="learn-hint" class="hint" hidden></p>
+      <p class="muted" id="last-input"></p>
+    </div>
+    <div id="vc-box" hidden>
+      <p class="muted">Works like a real controller: press Learn, move a control here, then click an executor below. Buttons show the executor colour (bright = running), faders are motorised, drag the encoders up and down.</p>
+      <div class="tc" id="tc"></div>
+    </div>
     <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
       <h2 class="exec-title" style="margin: 0;">Executors</h2>
       <label class="muted"><input type="checkbox" id="empty-rows" checked> show empty rows</label>
@@ -253,12 +270,6 @@
     <table><thead><tr><th>Device</th><th>Control</th><th>Type</th><th>Executor</th><th>Page</th><th></th></tr></thead><tbody id="maps"></tbody></table>
   </section>
 
-  <section data-panel="test">
-    <p class="muted">Works like a real controller: press Learn, move a control here, then click an executor below. Buttons show the executor colour (bright = running), faders are motorised, drag the encoders up and down.</p>
-    <div class="tc" id="tc"></div>
-    <h2 class="exec-title" style="margin-top: 20px;">Executors</h2>
-    <div class="wing exec-bar"></div>
-  </section>
 
   <section data-panel="ma3">
     <div class="bar" style="justify-content: space-between; margin-bottom: 8px;">
@@ -383,6 +394,7 @@ function render(st) {
     masters.push(tile({ top: key, right: "", name: m.label, cue: m.text, value: masterValue(m) }));
   $("masters").innerHTML = masters.join("") || `<div class="empty">None yet.</div>`;
 
+  renderModules(st);
   renderMidi(st);
   renderCdj(st);
   renderTempo(st);
@@ -618,14 +630,15 @@ $("maps").onchange = e => {
 };
 $("maps").onclick = e => { const b = e.target.closest("[data-del]"); if (b) post("/api/midi/mapping", { index: +b.dataset.del, delete: true }); };
 // Tabs -------------------------------------------------------------------------------------------
-const TABS = ["status", "cdj", "mapping", "test", "ma3", "log", "live"];
+const TABS = ["status", "cdj", "mapping", "ma3", "log", "live"];
 let tab = "status";
 function showTab(t) {
+  if (t === "test") t = "mapping";
   if (!TABS.includes(t)) t = "status";
   tab = t;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("sel", b.dataset.tab === t));
   document.querySelectorAll("[data-panel]").forEach(p => p.classList.toggle("show", p.dataset.panel === t));
-  $("learnbar").hidden = !(t === "mapping" || t === "test");
+  $("learnbar").hidden = t !== "mapping" || !(last && last.modules.midi);
   try { localStorage.setItem("boothmate.tab", t); } catch (e) {}
   if (location.hash !== "#" + t) history.replaceState(null, "", "#" + t);
   if (last) render(last);
@@ -633,9 +646,26 @@ function showTab(t) {
 $("tabs").onclick = e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); };
 window.onhashchange = () => showTab(location.hash.slice(1));
 
+// Module switches -------------------------------------------------------------------------------
+function renderModules(st) {
+  const mo = st.modules;
+  const sw = (id, on, label) => { $(id).classList.toggle("on", on); $(id).textContent = label + (on ? ": on" : ": off"); };
+  sw("cdj-on", mo.cdj, "DJ Link"); sw("midi-on", mo.midi, "MIDI"); sw("vc-on", mo.virtual_controller, "Virtual controller");
+  $("cdj-body").hidden = $("cdj-tools").hidden = !mo.cdj;
+  $("cdj-off-note").textContent = mo.cdj ? "" : "Switched off: no network sockets, no timers. Tempo link and timecode pause.";
+  $("midi-off-note").textContent = mo.midi ? "" : "Switched off: no MIDI thread, no port scanning. Mappings stay.";
+  $("vc-on").hidden = !mo.midi;
+  $("vc-box").hidden = !(mo.midi && mo.virtual_controller);
+  $("learnbar").hidden = tab !== "mapping" || !mo.midi;
+}
+const toggle = key => () => last && post("/api/modules", { [key]: !last.modules[key] });
+$("cdj-on").onclick = toggle("cdj");
+$("midi-on").onclick = toggle("midi");
+$("vc-on").onclick = toggle("virtual_controller");
+
 // Health: one entry per connection, shared by the status tab, the tab dots and the live view. -----
 const RANK = { off: 0, ok: 1, warn: 2, bad: 3 };
-const worst = list => list.reduce((a, h) => RANK[h.level] > RANK[a] ? h.level : a, "ok");
+const worst = list => list.reduce((a, h) => RANK[h.level] > RANK[a] ? h.level : a, "off");
 const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 2 ? "now" : s < 120 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; };
 
 function health(st) {
@@ -657,7 +687,9 @@ function health(st) {
   const devs = m.devices.filter(d => d.port !== "test");
   const known = id => id === "test" || m.devices.some(d => d.id === id || d.name === id || d.port === id);
   const missing = [...new Set(m.mappings.map(x => x.device).filter(id => !known(id)))];
-  out.push(missing.length
+  out.push(!st.modules.midi
+    ? { key: "midi", name: "MIDI", tab: "mapping", level: "off", detail: "Switched off", hint: `${m.mappings.length} mappings kept` }
+    : missing.length
     ? { key: "midi", name: "MIDI", tab: "mapping", level: "bad", detail: `${missing.join(", ")} not connected · ${m.mappings.length} mappings`, hint: "Plug it in. Boothmate looks for it every 2 seconds." }
     : m.error
       ? { key: "midi", name: "MIDI", tab: "mapping", level: "warn", detail: m.error, hint: "" }
@@ -666,8 +698,8 @@ function health(st) {
         : { key: "midi", name: "MIDI", tab: "mapping", level: "off", detail: "No controller connected", hint: m.mappings.length ? `${m.mappings.length} mappings (test controller)` : "Nothing mapped yet" });
   const cdevs = Object.values(cdj.devices), players = cdevs.filter(d => d.kind !== "mixer");
   const mas = cdj.master != null ? cdj.devices[cdj.master] : null;
-  out.push(!cdj.enabled
-    ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "off", detail: "Switched off (cdj.enabled)", hint: "" }
+  out.push(!st.modules.cdj
+    ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "off", detail: "Switched off", hint: "Switch it on in the CDJs tab." }
     : cdj.error
       ? { key: "cdj", name: "DJ Link", tab: "cdj", level: "bad", detail: cdj.error, hint: "Is rekordbox or another DJ Link program running on this computer?" }
       : !cdevs.length
@@ -677,7 +709,9 @@ function health(st) {
   const rules = t.rules.speed.length + t.rules.action.length;
   const tcText = tc.on ? (tc.streams.length ? `timecode ${tc.streams.length} stream${tc.streams.length > 1 ? "s" : ""}` : "timecode waiting") : "";
   const sent = Object.entries(t.sent).map(([k, v]) => `Speed 3.${k} = ${v.toFixed(2)} BPM`).join(" · ");
-  out.push(tc.error
+  out.push(!st.modules.cdj
+    ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "off", detail: "Paused: DJ Link is off", hint: "" }
+    : tc.error
     ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "bad", detail: tc.error, hint: "Check [timecode] target in boothmate.toml." }
     : t.note && rules
       ? { key: "tempo", name: "Tempo & timecode", tab: "cdj", level: "warn", detail: t.note, hint: "" }
@@ -715,7 +749,9 @@ function renderLive(st, hs) {
   const c = st.cdj, players = Object.values(c.devices).filter(d => d.kind !== "mixer");
   const m = (c.master != null && c.devices[c.master]) || players.find(d => d.playing) || null;
   let main;
-  if (!m) {
+  if (!st.modules.cdj) {
+    main = `<div class="lv-main nomaster"><div class="lv-empty">DJ Link is switched off. Switch it on in the CDJs tab.</div></div>`;
+  } else if (!m) {
     main = `<div class="lv-main nomaster"><div class="lv-empty">No tempo master yet. Waiting for CDJs${c.simulator ? "" : " (or press Simulator in the CDJs tab)"}.</div></div>`;
   } else {
     const bb = m.beat_in_bar;

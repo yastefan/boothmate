@@ -98,7 +98,39 @@ impl Device {
     }
 }
 
+/// Runs MIDI while it is switched on. Switching it off drops the running part, which ends the
+/// port thread and closes all ports. Mappings stay.
 pub async fn run(app: Arc<App>, mut test_rx: mpsc::UnboundedReceiver<Vec<u8>>) {
+    app.update(|st| st.midi.mappings = load_mappings(&app.dir));
+    let mut first = true;
+    loop {
+        if !app.modules.borrow().midi {
+            if first {
+                crate::log::info("MIDI: off");
+            }
+            app.update(|st| st.midi.devices.clear());
+            tokio::select! {
+                _ = app.wait_modules(|m| m.midi) => {}
+                // Drop test controller input while off.
+                _ = async { while test_rx.recv().await.is_some() {} } => return,
+            }
+        }
+        first = false;
+        tokio::select! {
+            _ = run_on(app.clone(), &mut test_rx) => return,
+            _ = app.wait_modules(|m| !m.midi) => {}
+        }
+        crate::log::info("MIDI: switched off");
+        app.update(|st| {
+            st.midi.devices.clear();
+            st.midi.learn = None;
+            st.midi.last_input = None;
+            st.midi.error = None;
+        });
+    }
+}
+
+async fn run_on(app: Arc<App>, test_rx: &mut mpsc::UnboundedReceiver<Vec<u8>>) {
     let profiles = device::load_all(&app.dir.join("devices"));
     crate::log::info(&format!(
         "MIDI: device profiles: {}",
@@ -108,9 +140,7 @@ pub async fn run(app: Arc<App>, mut test_rx: mpsc::UnboundedReceiver<Vec<u8>>) {
             .collect::<Vec<_>>()
             .join(", ")
     ));
-    let mappings = load_mappings(&app.dir);
-    let mut saved_rev = 0;
-    app.update(|st| st.midi.mappings = mappings);
+    let mut saved_rev = app.state.lock().unwrap().midi.rev;
 
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
     let cmd = ports::spawn(
@@ -127,6 +157,7 @@ pub async fn run(app: Arc<App>, mut test_rx: mpsc::UnboundedReceiver<Vec<u8>>) {
     publish_devices(&app, &devices);
 
     let mut changes = app.changes.subscribe();
+    let mut modules = app.modules.subscribe();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     loop {
         tokio::select! {
@@ -157,11 +188,15 @@ pub async fn run(app: Arc<App>, mut test_rx: mpsc::UnboundedReceiver<Vec<u8>>) {
                 }
             },
             Some(bytes) = test_rx.recv() => {
+                if !app.modules.borrow().virtual_controller {
+                    continue;
+                }
                 if let Some(d) = devices.get_mut(TEST_PORT) {
                     handle_input(&app, d, &bytes);
                 }
             }
             r = changes.changed() => if r.is_err() { return },
+            r = modules.changed() => if r.is_err() { return } else { publish_devices(&app, &devices) },
             _ = tick.tick() => {}
         }
         let rev = app.state.lock().unwrap().midi.rev;
@@ -175,8 +210,10 @@ pub async fn run(app: Arc<App>, mut test_rx: mpsc::UnboundedReceiver<Vec<u8>>) {
 }
 
 fn publish_devices(app: &App, devices: &BTreeMap<String, Device>) {
+    let virtual_on = app.modules.borrow().virtual_controller;
     let list = devices
         .iter()
+        .filter(|(port, _)| virtual_on || port.as_str() != TEST_PORT)
         .map(|(port, d)| mapping::DeviceInfo {
             id: d.id.clone(),
             port: port.clone(),

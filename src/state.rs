@@ -96,6 +96,26 @@ pub struct State {
     pub cdj: crate::cdj::tracker::CdjState,
     pub tempo: crate::tempo::TempoState,
     pub timecode: crate::timecode::TimecodeState,
+    pub modules: Modules,
+}
+
+/// Parts of Boothmate that can be switched off. Off means no threads, sockets or timers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Modules {
+    pub midi: bool,
+    pub cdj: bool,
+    /// The virtual controller in the web UI (part of MIDI).
+    pub virtual_controller: bool,
+}
+
+impl Modules {
+    pub fn from_config(c: &crate::config::Config) -> Self {
+        Modules {
+            midi: c.midi.enabled,
+            cdj: c.cdj.enabled,
+            virtual_controller: c.midi.virtual_controller,
+        }
+    }
 }
 
 /// A change parsed from one OSC message.
