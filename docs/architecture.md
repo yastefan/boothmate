@@ -48,7 +48,7 @@ The plugin sends a page snapshot on connect, on `resync`, when a hooked object c
 ## MIDI module
 
 - Ports via `midir` on a thread of their own; rescanned every 2 s (hot plug). Each input is paired with its output by name (Windows: `MIDIIN2 (X)` / `MIDIOUT2 (X)`) or by the profile's port pattern. macOS: a virtual port pair "Boothmate". Windows needs loopMIDI for virtual ports.
-- Device profiles `devices/<id>.toml`: control groups (button, fader, encoder, display) with note/CC/pitch bend addresses and a feedback type. Reference profiles: Akai APC mini mk2 (RGB pads by palette, brightness by channel) and Mackie Control (motor faders as pitch bend with touch notes, LED rings, scribble strips). A built-in test controller in the web UI uses the same path.
+- Device profiles `devices/<id>.toml`: control groups (button, fader, encoder, display) with note/CC/pitch bend addresses and a feedback type. Reference profiles: Akai APC mini mk2 (RGB pads by palette, brightness by channel) and Mackie Control (motor faders as pitch bend with touch notes, LED rings, scribble strips). A built-in virtual controller in the web UI (switchable) uses the same path.
 - Devices without a profile: learned controls get mirrored feedback (LED 127/0, fader value). CC controls are guessed from the values while learning (absolute fader, 0/127 button, relative encoder) and can be changed in the mapping list.
 - MIDI learn: start learn, move a control, then click an executor in the UI or press its key / move its fader in grandMA3 (the OSC event is matched to the executor via the plugin's page snapshot). Learn stays on for the next control.
 - Mappings in `midi.toml`: device (profile id or port name), control, kind, MIDI address, executor, page (absent = follow the current page).

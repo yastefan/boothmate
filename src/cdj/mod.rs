@@ -20,7 +20,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use tracker::Event;
+use tracker::{CdjState, Event};
 
 /// Name of the virtual player on the network.
 pub const VCDJ_NAME: &str = "Boothmate";
@@ -112,13 +112,35 @@ impl Net {
     }
 }
 
+/// Runs DJ Link while it is switched on. Switching it off drops the running part: sockets,
+/// the virtual player, the simulator and a recording all stop with it.
 pub async fn run(app: Arc<App>) {
-    let cfg = app.config.cdj.clone();
-    app.update(|st| st.cdj.enabled = cfg.enabled);
-    if !cfg.enabled {
-        crate::log::info("DJ Link: off (cdj.enabled = false)");
-        return;
+    let mut first = true;
+    loop {
+        if !app.modules.borrow().cdj {
+            if first {
+                crate::log::info("DJ Link: off");
+            }
+            app.wait_modules(|m| m.cdj).await;
+        }
+        first = false;
+        app.update(|st| {
+            st.cdj = CdjState {
+                enabled: true,
+                ..Default::default()
+            }
+        });
+        tokio::select! {
+            _ = run_on(app.clone()) => return,
+            _ = app.wait_modules(|m| !m.cdj) => {}
+        }
+        crate::log::info("DJ Link: switched off");
+        app.update(|st| st.cdj = CdjState::default());
     }
+}
+
+async fn run_on(app: Arc<App>) {
+    let cfg = app.config.cdj.clone();
     let mut net = Net {
         announce: None,
         beat: None,

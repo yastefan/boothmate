@@ -33,6 +33,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/tempo", post(set_tempo))
         .route("/api/timecode", post(set_timecode))
         .route("/api/log", post(recent_log))
+        .route("/api/modules", post(set_modules))
         .with_state(app)
 }
 
@@ -153,6 +154,46 @@ async fn simulate_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl Into
 async fn record_cdj(Ax(app): Ax<Arc<App>>, Json(r): Json<SimReq>) -> impl IntoResponse {
     app.update(|st| st.cdj.record = r.on);
     "ok"
+}
+
+#[derive(Deserialize)]
+struct ModulesReq {
+    midi: Option<bool>,
+    cdj: Option<bool>,
+    virtual_controller: Option<bool>,
+}
+
+/// Switches MIDI, DJ Link or the virtual controller on or off and saves it to boothmate.toml.
+async fn set_modules(Ax(app): Ax<Arc<App>>, Json(r): Json<ModulesReq>) -> impl IntoResponse {
+    let mut saves = vec![];
+    app.modules.send_modify(|m| {
+        if let Some(v) = r.midi {
+            m.midi = v;
+            saves.push(("midi", "enabled", v));
+        }
+        if let Some(v) = r.cdj {
+            m.cdj = v;
+            saves.push(("cdj", "enabled", v));
+        }
+        if let Some(v) = r.virtual_controller {
+            m.virtual_controller = v;
+            saves.push(("midi", "virtual_controller", v));
+        }
+    });
+    let m = *app.modules.borrow();
+    app.update(|st| st.modules = m);
+    for (section, key, v) in saves {
+        if let Err(e) =
+            crate::config::save_value(&app.dir, section, key, if v { "true" } else { "false" })
+        {
+            crate::log::warn(&format!("settings: {e}"));
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Switched, but not saved: {e}"),
+            );
+        }
+    }
+    (StatusCode::OK, "ok".to_string())
 }
 
 #[derive(Deserialize)]

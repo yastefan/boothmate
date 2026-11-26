@@ -26,13 +26,15 @@ Boothmate wants to solve both in one small, robust tool:
 3. Import the plugin from `lua/boothmate.xml` into your show and start it with `Plugin "boothmate"`.
 4. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
 
-The web page opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, Test controller, grandMA3 and Log; Live is the last tab.
+The web page opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, grandMA3 and Log; Live is the last tab.
+
+MIDI and DJ Link can each be switched off in their tab (saved in `boothmate.toml`). Off means off: no thread, no sockets, no timers. Mappings and tempo rules stay.
 
 ## MIDI controllers
 
 Plug in the controller, then press **Learn** in the MIDI & Mapping tab, move a control, and click an executor (or press its key in grandMA3). Repeat for more controls, then stop learning. Buttons light up in the executor's appearance colour (bright = running, dim = assigned), motor faders and LED rings follow the fader. Mappings follow the current page unless you set a fixed page; they are saved in `midi.toml`.
 
-Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Use the Test controller tab. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
+Controllers with a profile in `devices/` get full feedback: Akai APC mini mk2 and Mackie Control devices (Behringer X-Touch in MC mode, iCON, ...). Other controllers work too, with simple LED and fader feedback. No controller at hand? Switch on the **Virtual controller** in the MIDI & Mapping tab. On macOS, Boothmate also offers a virtual MIDI port "Boothmate" for software controllers.
 
 ## CDJs (Pro DJ Link)
 

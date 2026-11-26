@@ -154,7 +154,19 @@ pub async fn run(app: Arc<App>) {
     let mut tick = tokio::time::interval(frame);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut ui_last = 0u64;
+    let mut changes = app.changes.subscribe();
     loop {
+        // Off (or DJ Link off): no timer, just wait for the next state change.
+        let idle = !app.state.lock().unwrap().timecode.on || !app.modules.borrow().cdj;
+        if idle {
+            if !app.state.lock().unwrap().timecode.streams.is_empty() {
+                app.update(|st| st.timecode.streams.clear());
+            }
+            if changes.changed().await.is_err() {
+                return;
+            }
+            continue;
+        }
         tick.tick().await;
         let now = now_ms();
         let (on, list) = {

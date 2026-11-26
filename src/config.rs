@@ -26,6 +26,10 @@ token = ""
 profile = "auto"
 
 [midi]
+# MIDI controllers. Off = no MIDI thread and no port scanning. Also switchable in the web UI.
+enabled = true
+# The virtual controller in the web UI (MIDI tab), for trying mappings without hardware.
+virtual_controller = false
 # macOS: offer a virtual MIDI port "Boothmate" for software controllers.
 virtual_port = true
 # MIDI ports to leave alone (parts of the name), e.g. ["IAC", "Network"].
@@ -33,6 +37,7 @@ ignore = []
 
 [cdj]
 # Pioneer Pro DJ Link, read-only: finds CDJs and mixers on the network and reads tempo and beats.
+# Off = no sockets and no timers. Also switchable in the web UI.
 enabled = true
 # Network interface for DJ Link, by name ("en5", "Ethernet 2") or IP. Empty = the one the first
 # CDJ or mixer is seen on.
@@ -110,6 +115,8 @@ impl Default for Cdj {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Midi {
+    pub enabled: bool,
+    pub virtual_controller: bool,
     pub virtual_port: bool,
     pub ignore: Vec<String>,
 }
@@ -117,6 +124,8 @@ pub struct Midi {
 impl Default for Midi {
     fn default() -> Self {
         Self {
+            enabled: true,
+            virtual_controller: false,
             virtual_port: true,
             ignore: vec![],
         }
@@ -222,5 +231,71 @@ mod tests {
         let c: Config = toml::from_str("[web]\nlisten = \"0.0.0.0:80\"").unwrap();
         assert_eq!(c.web.listen, "0.0.0.0:80");
         assert_eq!(c.osc.listen, "127.0.0.1:9001");
+    }
+}
+
+/// Sets `key = value` in `[section]` of the TOML text, keeping comments and everything else.
+/// Adds the key (after the section header) or the section (at the end) when missing.
+pub fn set_value(text: &str, section: &str, key: &str, value: &str) -> String {
+    let header = format!("[{section}]");
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let Some(start) = lines.iter().position(|l| l.trim() == header) else {
+        let mut out = text.trim_end().to_string();
+        out.push_str(&format!("\n\n{header}\n{key} = {value}\n"));
+        return out;
+    };
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| l.trim_start().starts_with('['))
+        .map_or(lines.len(), |i| start + 1 + i);
+    let is_key = |l: &str| {
+        let t = l.trim_start();
+        t.strip_prefix(key)
+            .is_some_and(|r| r.trim_start().starts_with('='))
+    };
+    match (start + 1..end).find(|&i| is_key(&lines[i])) {
+        Some(i) => lines[i] = format!("{key} = {value}"),
+        None => lines.insert(start + 1, format!("{key} = {value}")),
+    }
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Saves one setting to `boothmate.toml` in the data folder.
+pub fn save_value(dir: &Path, section: &str, key: &str, value: &str) -> Result<(), String> {
+    let path = dir.join("boothmate.toml");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    std::fs::write(&path, set_value(&text, section, key, value))
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::*;
+
+    #[test]
+    fn set_value_keeps_comments() {
+        let t =
+            "# top\n[midi]\n# on or off\nenabled = true\nignore = []\n\n[cdj]\nenabled = true\n";
+        let out = set_value(t, "cdj", "enabled", "false");
+        assert_eq!(
+            out,
+            "# top\n[midi]\n# on or off\nenabled = true\nignore = []\n\n[cdj]\nenabled = false\n"
+        );
+        let out = set_value(&out, "midi", "virtual_controller", "true");
+        assert!(out.contains("[midi]\nvirtual_controller = true\n# on or off"));
+        let out = set_value(&out, "timecode", "enabled", "true");
+        assert!(out.ends_with("[timecode]\nenabled = true\n"));
+        let c: Config = toml::from_str(&out).unwrap();
+        assert!(!c.cdj.enabled && c.midi.virtual_controller && c.timecode.enabled);
+    }
+
+    #[test]
+    fn default_config_parses() {
+        let c: Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+        assert!(c.midi.enabled && !c.midi.virtual_controller && c.cdj.enabled);
     }
 }
