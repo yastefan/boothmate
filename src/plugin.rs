@@ -44,16 +44,9 @@ pub fn request_setup(app: &App, apply: bool) -> Result<(), String> {
         ));
     }
     let n = crate::setup::needs(&app.config, st.timecode.on);
-    let nothing_in = st.connections.osc_packets == 0;
     drop(st);
     let op = if apply {
-        let mut op = crate::setup::apply_op(&n);
-        // Settings right but nothing arrives: grandMA3's OSC output can get stuck until
-        // Enable Output is switched off and on again.
-        if nothing_in && n.osc_out.is_some() {
-            op["restart_output"] = json!(true);
-        }
-        op
+        crate::setup::apply_op(&n)
     } else {
         json!({ "op": "setup" })
     };
