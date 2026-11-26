@@ -125,6 +125,14 @@ Known limits: track data queries borrow a player number (see Track data). Phrase
 
 Checklist for the first test with real players: [club-checklist.md](club-checklist.md).
 
+## Window
+
+`src/window.rs` shows the web UI in a native window: tao for the window, wry for the system web view (WebKit on macOS, WebView2 on Windows), muda for the macOS menu bar (without an Edit menu, copy and paste do not work in WKWebView). No browser engine is bundled. The window owns the main thread, as macOS requires; the core (tokio runtime, web server) runs on a second thread and tells the window when the web UI listens or fails. The web server always runs, so a browser or tablet can connect at the same time. Linux builds and `--no-window` / `web.window = false` run without a window.
+
+On Windows a double-click gives the program its own console; Boothmate releases it when the window opens (a short flash), but keeps a console it was started from, so logs and Ctrl+C still work in a terminal. Web view data goes to the temp folder, not onto the stick.
+
+Later, a tray or menu bar icon and autostart hook into the same event loop: closing the window then hides it instead of quitting.
+
 ## Safety
 
 - Only executor addresses are sent to grandMA3, never free commands. The Lua plugin accepts a fixed message set and a shared token.

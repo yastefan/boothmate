@@ -55,5 +55,8 @@ fi
 
 pkill -x boothmate-mac 2>/dev/null && sleep 1 || true
 echo "Starting $branch (build $run). Ctrl+C to stop."
-(sleep 2 && open "http://127.0.0.1:8088/") &
+# Builds with a window open it themselves; older ones need the browser.
+if ! "$dir/Boothmate/boothmate-mac" --help | grep -q -- --no-window; then
+  (sleep 2 && open "http://127.0.0.1:8088/") &
+fi
 exec "$dir/Boothmate/boothmate-mac"

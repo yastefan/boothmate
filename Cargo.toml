@@ -21,6 +21,18 @@ toml = "0.9"
 midir = "0.10"
 netdev = { version = "0.40", default-features = false }
 
+# Native window with the system web view (WebKit on macOS, WebView2 on Windows).
+# Linux builds run without a window.
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+tao = { version = "0.38", default-features = false, features = ["rwh_06"] }
+wry = { version = "0.58", default-features = false, features = ["os-webview"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.22", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [profile.release]
 lto = true
 strip = true

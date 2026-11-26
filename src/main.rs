@@ -12,6 +12,8 @@ mod state;
 mod tempo;
 mod timecode;
 mod web;
+#[cfg(any(target_os = "macos", windows))]
+mod window;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -59,8 +61,11 @@ impl App {
     }
 }
 
-const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose] [--replay <capture>]
+const USAGE: &str = "Usage: boothmate [--dir <data folder>] [--verbose] [--replay <capture>] [--no-window]
        boothmate --check <capture>...
+
+--no-window runs without the Boothmate window (open the web UI in a browser instead; same as
+web.window = false in boothmate.toml).
 
 --replay plays a DJ Link capture (pcap/pcapng, e.g. logs/djlink-*.pcap) as if the devices were
 on the network. --check prints what Boothmate understands in a capture.
@@ -93,12 +98,14 @@ fn main() {
     let mut dir = None;
     let mut verbose = false;
     let mut replay = None;
+    let mut no_window = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--dir" => dir = args.next().map(PathBuf::from),
             "-v" | "--verbose" => verbose = true,
             "--replay" => replay = args.next().map(PathBuf::from),
+            "--no-window" => no_window = true,
             "--check" => {
                 let mut failed = false;
                 for f in args.by_ref() {
@@ -129,18 +136,57 @@ fn main() {
         }
     }
     let dir = data_dir(dir);
-    if let Err(e) = run(dir, verbose, replay) {
-        eprintln!("error: {e}");
-        // Keep the window open when started by double-click on Windows.
-        if cfg!(windows) {
-            eprintln!("Press Enter to close.");
-            let _ = std::io::stdin().read_line(&mut String::new());
-        }
-        std::process::exit(1);
+    let window = !no_window && cfg!(any(target_os = "macos", windows));
+    let (app, midi_test_rx) = match prepare(dir, verbose, replay) {
+        Ok(v) => v,
+        Err(e) => fail(e, window),
+    };
+    #[cfg(any(target_os = "macos", windows))]
+    if window && app.config.web.window {
+        window::run(move |events| {
+            std::thread::spawn(
+                move || match serve(app, midi_test_rx, |url| events.ready(url)) {
+                    Ok(()) => events.quit(),
+                    Err(e) => {
+                        log::warn(&e);
+                        events.failed(e);
+                    }
+                },
+            );
+        });
+    }
+    let banner = |url: &str| {
+        println!("\n  Boothmate is running. Open {url} in your browser. Ctrl+C to quit.\n")
+    };
+    if let Err(e) = serve(app, midi_test_rx, banner) {
+        fail(e, false);
     }
 }
 
-fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), String> {
+/// Reports a startup error and exits: in a window, or on the terminal.
+fn fail(e: String, window: bool) -> ! {
+    eprintln!("error: {e}");
+    #[cfg(any(target_os = "macos", windows))]
+    if window {
+        window::show_error(e);
+    }
+    let _ = window;
+    // Keep the window open when started by double-click on Windows.
+    if cfg!(windows) {
+        eprintln!("Press Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
+    std::process::exit(1);
+}
+
+type MidiTestRx = tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>;
+
+/// Loads settings and profiles and builds the shared state.
+fn prepare(
+    dir: PathBuf,
+    verbose: bool,
+    cdj_replay: Option<PathBuf>,
+) -> Result<(Arc<App>, MidiTestRx), String> {
     log::init(&dir, verbose);
     log::info(&format!(
         "Boothmate {} - data folder {}",
@@ -179,7 +225,11 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
         modules: watch::channel(modules).0,
         tracks: Default::default(),
     });
+    Ok((app, midi_test_rx))
+}
 
+/// Runs the core until Ctrl+C or an error. `ready` gets the web UI URL once it listens.
+fn serve(app: Arc<App>, midi_test_rx: MidiTestRx, ready: impl FnOnce(&str)) -> Result<(), String> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -190,7 +240,7 @@ fn run(dir: PathBuf, verbose: bool, cdj_replay: Option<PathBuf>) -> Result<(), S
             .map_err(|e| format!("cannot start web UI on {}: {e}", app.config.web.listen))?;
         let url = web_url(&app.config.web.listen);
         log::info(&format!("Web UI: {url}"));
-        println!("\n  Boothmate is running. Open {url} in your browser. Ctrl+C to quit.\n");
+        ready(&url);
 
         tokio::spawn(osc::run(app.clone()));
         tokio::spawn(plugin::run(app.clone()));
