@@ -7,6 +7,7 @@ mod midi;
 mod osc;
 mod plugin;
 mod profile;
+mod setup;
 mod state;
 mod tempo;
 mod timecode;

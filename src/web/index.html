@@ -277,6 +277,11 @@
       <button id="resync" title="Ask the plugin to read the page again">Resync</button>
     </div>
     <table class="kv" id="ma3-conn"></table>
+    <h2 style="margin-top: 20px;">Plugin</h2>
+    <p id="plugin-ver"></p>
+    <table id="plugin-libs"></table>
+    <p class="muted">Then in grandMA3: open the Plugin pool, edit a free slot (or the old Boothmate plugin), press Import and pick <b>boothmate</b> from the library. Start it with <code>Plugin "boothmate"</code>; after an update, run it again.</p>
+    <p id="plugin-msg" class="hint" hidden></p>
     <h2 style="margin-top: 20px;">Other sequences (seen via OSC)</h2>
     <div class="grid" id="sequences"></div>
     <h2 style="margin-top: 20px;">Masters</h2>
@@ -402,7 +407,7 @@ function render(st) {
   renderDots(hs);
   if (tab === "status") renderStatus(st, hs);
   if (tab === "live") renderLive(st, hs);
-  if (tab === "ma3") renderMa3(st);
+  if (tab === "ma3") { renderMa3(st); renderPlugin(st); }
 
   const unk = Object.entries(c.osc_unknown);
   $("unknown").innerHTML = unk.length ? unk.map(([a, n]) => `<div><code>${esc(a)}</code> × ${n}</div>`).join("") : "None.";
@@ -641,6 +646,7 @@ function showTab(t) {
   $("learnbar").hidden = t !== "mapping" || !(last && last.modules.midi);
   try { localStorage.setItem("boothmate.tab", t); } catch (e) {}
   if (location.hash !== "#" + t) history.replaceState(null, "", "#" + t);
+  if (t === "ma3") loadPlugin();
   if (last) render(last);
 }
 $("tabs").onclick = e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); };
@@ -671,7 +677,11 @@ const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 2
 function health(st) {
   const c = st.connections, m = st.midi, cdj = st.cdj, t = st.tempo, tc = st.timecode;
   const out = [];
-  out.push(c.plugin_connected
+  const outdated = c.plugin_connected && pluginInfo && pluginInfo.bundled && older(c.plugin_version, pluginInfo.bundled);
+  out.push(outdated
+    ? { key: "ma3", name: "grandMA3", tab: "ma3", level: "warn", detail: `Plugin ${c.plugin_version} is older than ${pluginInfo.bundled}`,
+        hint: "Copy the new plugin in the grandMA3 tab and import it again." }
+    : c.plugin_connected
     ? { key: "ma3", name: "grandMA3", tab: "ma3", level: c.profile_fallback ? "warn" : "ok",
         detail: `grandMA3 ${c.ma_version} · plugin ${c.plugin_version} · profile ${c.profile}`,
         hint: c.profile_fallback ? `No verified profile for this version: read-only. Add ma-profiles/<version>.toml.` : (st.page != null ? `Page ${st.page}` : "") }
@@ -808,6 +818,36 @@ function renderMa3(st) {
   setHtml($("ma3-conn"), rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join(""));
 }
 
+// Plugin copy ----------------------------------------------------------------------------------
+let pluginInfo = null;
+const verNum = v => (v || "0").split(".").map(n => parseInt(n) || 0);
+const older = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+async function loadPlugin() {
+  try { pluginInfo = await (await fetch("/api/plugin")).json(); } catch (e) { return; }
+  if (last) render(last);
+}
+function renderPlugin(st) {
+  const c = st.connections, p = pluginInfo;
+  if (!p) return;
+  const running = c.plugin_connected ? c.plugin_version : null;
+  setHtml($("plugin-ver"), `This Boothmate comes with plugin <b>${esc(p.bundled || "?")}</b>. ` +
+    (running ? (older(running, p.bundled) ? `grandMA3 runs the older <b>${esc(running)}</b>: copy it and import it again.` : `grandMA3 runs <b>${esc(running)}</b>.`) : "The plugin is not connected."));
+  setHtml($("plugin-libs"), p.libraries.length ? p.libraries.map((l, i) => `<tr>
+      <td>${l.kind === "drive" ? "This drive (show stick)" : "This computer (onPC)"}</td>
+      <td><code>${esc(l.path)}</code></td>
+      <td>${l.installed ? "has " + esc(l.installed) : "no plugin yet"}</td>
+      <td><button data-lib="${i}">${l.installed === p.bundled ? "Copy again" : l.installed ? "Update plugin" : "Copy plugin"}</button></td></tr>`).join("")
+    : `<tr><td class="muted">No grandMA3 library found on this computer or drive. Import <code>lua/boothmate.xml</code> from the Boothmate folder instead.</td></tr>`);
+}
+$("plugin-libs").onclick = async e => {
+  const b = e.target.closest("[data-lib]");
+  if (!b || !pluginInfo) return;
+  const r = await fetch("/api/plugin/install", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ library: pluginInfo.libraries[+b.dataset.lib].path }) });
+  $("plugin-msg").hidden = false;
+  $("plugin-msg").textContent = r.ok ? `Done: ${await r.text()}. Now import it in grandMA3 (steps above).` : `Failed: ${await r.text()}`;
+  loadPlugin();
+};
+
 // Log -------------------------------------------------------------------------------------------
 let logLines = [], logSeq = 0;
 const hms = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -829,6 +869,7 @@ showTab(startTab || "status");
 setInterval(() => last && render(last), 1000);
 pollLog();
 setInterval(pollLog, 2000);
+loadPlugin();
 try { $("empty-rows").checked = localStorage.getItem("boothmate.emptyRows") !== "0"; } catch {}
 $("empty-rows").onchange = () => { try { localStorage.setItem("boothmate.emptyRows", $("empty-rows").checked ? "1" : "0"); } catch {} last && render(last); };
 $("resync").onclick = () => fetch("/api/resync", { method: "POST" });
