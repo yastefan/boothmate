@@ -62,7 +62,7 @@ The plugin sends a page snapshot on connect, on `resync`, when a hooked object c
 | Endless encoder | Fader value | CC for the LED ring; input relative, sent as `/PageX/EncoderY` |
 | Display | Executor name | SysEx template per device profile |
 
-- grandMA3 sends no OSC output for changes caused by OSC input. Fader and encoder moves are applied locally; after a key press from a controller Boothmate asks the plugin for a new page snapshot (120 ms later), which carries the running state whatever the key did (toggle, go, flash ...).
+- grandMA3 sends no OSC output for changes caused by OSC input. Fader and encoder moves are applied locally; after controller input Boothmate asks the plugin for a new page snapshot (120 ms after a key, 300 ms after the last fader or encoder move), which carries the running state whatever the input did (toggle, go, flash, a fader at 0 switching the sequence off ...).
 - Only the current page is known (plugin snapshot). Mappings fixed to another page stay dark until that page is shown.
 - No plugin connection: buttons go dark, motor faders stay. Unknown grandMA3 version (fallback profile): MIDI does not send.
 
