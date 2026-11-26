@@ -270,8 +270,16 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
     d.last_input.insert(name, now);
     crate::log::debug(&format!("midi: {} {:?} -> {actions:?}", d.id, input));
     if !read_only {
+        let key = actions
+            .iter()
+            .any(|a| matches!(a, mapping::Action::Key { .. }));
         for a in actions {
             crate::osc::send_action(app, &a);
+        }
+        if key {
+            // grandMA3 does not report what a key sent over OSC input did (toggle, go, flash...),
+            // so ask the plugin to read the page again once grandMA3 has applied it.
+            crate::plugin::refresh_soon(app);
         }
     }
 }

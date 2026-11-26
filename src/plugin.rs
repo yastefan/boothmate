@@ -54,6 +54,25 @@ pub fn request_setup(app: &App, apply: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Time grandMA3 gets to apply an OSC key before the plugin reads the page again.
+const REFRESH_DELAY: Duration = Duration::from_millis(120);
+
+/// Asks the plugin for a fresh page snapshot shortly. grandMA3 does not send OSC output for
+/// changes caused by OSC input, so this is how a key pressed from Boothmate gets its feedback.
+pub fn refresh_soon(app: &App) {
+    request_resync(app.plugin_ops.clone());
+}
+
+fn request_resync(ops: tokio::sync::broadcast::Sender<String>) {
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    rt.spawn(async move {
+        tokio::time::sleep(REFRESH_DELAY).await;
+        let _ = ops.send(json!({ "op": "resync" }).to_string());
+    });
+}
+
 pub async fn run(app: Arc<App>) {
     let addr = format!("{}:{}", app.config.plugin.host, app.config.plugin.port);
     let mut logged_wait = false;
@@ -222,5 +241,20 @@ mod tests {
                 executors: vec![]
             }
         );
+    }
+
+    #[tokio::test]
+    async fn resync_is_requested_after_a_short_delay() {
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<String>(4);
+        request_resync(tx);
+        assert!(
+            rx.try_recv().is_err(),
+            "not at once: grandMA3 applies the key first"
+        );
+        let op = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(op, r#"{"op":"resync"}"#);
     }
 }
