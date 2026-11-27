@@ -50,6 +50,8 @@
   button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .hint { background: #16243a; border: 1px solid #2b4570; border-radius: 8px; padding: 8px 12px; }
   .muted { color: var(--muted); }
+  .weburl { margin: 10px 2px 14px; overflow-wrap: anywhere; }
+  .weburl b { color: var(--text, inherit); user-select: all; -webkit-user-select: all; font-weight: 600; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 500; }
@@ -205,6 +207,7 @@
   <section data-panel="status">
     <div id="summary" class="summary"></div>
     <div class="health" id="health"></div>
+    <div class="weburl muted" id="weburl"></div>
     <div class="cols">
       <div class="card grow">
         <div class="cardhead"><h2>DJ Link</h2><a href="#cdj">Open CDJs</a></div>
@@ -765,6 +768,12 @@ function renderStatus(st, hs) {
   $("summary").className = "summary " + (lv === "off" ? "ok" : lv);
   setHtml($("health"), hs.map(h => `<a class="htile" href="#${h.tab}"><div class="t"><span class="dot ${h.level}"></span><b>${esc(h.name)}</b><em class="lv-${h.level}">${LEVEL_TEXT[h.level]}</em></div>
     <div class="d">${esc(h.detail)}</div>${h.hint ? `<div class="h">${esc(h.hint)}</div>` : ""}</a>`).join(""));
+  const c = st.connections;
+  const urls = (c.web_urls || []).map(u => `<b>${esc(u)}</b>`).join(" or ");
+  const port = ((c.web_urls || [])[0] || "").match(/:(\d+)\/$/)?.[1] || "8088";
+  setHtml($("weburl"), c.web_local_only
+    ? `Also in a browser on this computer: ${urls}. For a tablet or another computer, set <code>web.listen = "0.0.0.0:${esc(port)}"</code> in boothmate.toml and restart.`
+    : `Also in a browser or on a tablet: ${urls}`);
   const devs = Object.values(st.cdj.devices).filter(d => d.kind !== "mixer");
   setHtml($("status-players"), devs.length ? devs.map(d => cdjCard(d, st.cdj.master)).join("") : `<div class="empty">No players.</div>`);
 }

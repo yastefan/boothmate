@@ -203,6 +203,7 @@ fn prepare(
     st.connections.osc_listen = config.osc.listen.clone();
     st.connections.osc_send = config.osc.send.clone();
     st.connections.plugin_addr = format!("{}:{}", config.plugin.host, config.plugin.port);
+    (st.connections.web_urls, st.connections.web_local_only) = web::urls(&config.web.listen);
     st.connections.profile = start.id.clone();
     let modules = state::Modules::from_config(&config);
     st.modules = modules;
