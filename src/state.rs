@@ -92,6 +92,10 @@ pub struct Connections {
     pub profile: String,
     /// The profile is not verified for this grandMA3 version: read-only.
     pub profile_fallback: bool,
+    /// Addresses of the web UI, for a browser or tablet.
+    pub web_urls: Vec<String>,
+    /// The web UI only listens on this computer (`web.listen` is a loopback address).
+    pub web_local_only: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

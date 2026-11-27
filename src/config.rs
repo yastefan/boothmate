@@ -60,6 +60,9 @@ fps = 30
 
 [web]
 listen = "127.0.0.1:8088"
+# Open the Boothmate window (macOS, Windows). Off = only the web UI; open it in a browser.
+# The web UI is always there too, also with the window.
+window = true
 "#;
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -158,6 +161,8 @@ pub struct Ma {
 #[serde(default)]
 pub struct Web {
     pub listen: String,
+    /// Show the web UI in a native window (macOS, Windows).
+    pub window: bool,
 }
 
 impl Default for Osc {
@@ -192,6 +197,7 @@ impl Default for Web {
     fn default() -> Self {
         Self {
             listen: "127.0.0.1:8088".into(),
+            window: true,
         }
     }
 }
@@ -230,6 +236,7 @@ mod tests {
     fn partial_config_uses_defaults() {
         let c: Config = toml::from_str("[web]\nlisten = \"0.0.0.0:80\"").unwrap();
         assert_eq!(c.web.listen, "0.0.0.0:80");
+        assert!(c.web.window);
         assert_eq!(c.osc.listen, "127.0.0.1:9001");
     }
 }

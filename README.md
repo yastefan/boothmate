@@ -20,11 +20,11 @@ Boothmate wants to solve both in one small, robust tool:
 ## Usage
 
 1. Download `Boothmate-mac.zip` or `Boothmate-win.zip` from the [build runs](https://github.com/yastefan/boothmate/actions/workflows/build.yml) or releases and unpack the `Boothmate` folder, for example next to your show files on a USB stick.
-2. Start `boothmate-mac` or `boothmate-win.exe` and open <http://127.0.0.1:8088/>.
+2. Start `boothmate-mac` or `boothmate-win.exe`. Boothmate opens in its own window; closing the window quits it. The Status tab shows the address for a browser or tablet (default <http://127.0.0.1:8088/>, see `web.listen`). Without a window: `--no-window` or `web.window = false` in `boothmate.toml`.
 3. Import the plugin into your show and start it with `Plugin "boothmate"`. The easy way: press **Copy plugin** in its grandMA3 tab. It puts the plugin into the grandMA3 library of this computer (onPC) or of the stick Boothmate runs from, so the Plugin pool's Import finds it. Or import `lua/boothmate.xml` from the Boothmate folder. From plugin 0.4.0 on, a newer Boothmate offers **Update plugin in grandMA3**: the plugin replaces itself (this runs `ReloadAllPlugins`); save the show afterwards.
 4. Press **Set up in grandMA3** in the grandMA3 tab (plugin 0.3.0 or later). The plugin adds or fixes the two OSC lines and, if timecode is on, the Art-Net timecode input; it never removes anything. By hand: in Menu > In & Out > OSC add two OSC lines, both UDP with destination `127.0.0.1`, with **Enable Output** and **Enable Input** on: port `9001` with **Send = Yes** (feedback to Boothmate) and port `8000` with **Receive = Yes** (keys and faders from Boothmate).
 
-The web page opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, grandMA3 and Log; Live is the last tab.
+The window opens on **Status**: one tile per connection (grandMA3, OSC, MIDI, DJ Link, tempo and timecode) that turns yellow or red and says what to do, plus the recent events. **Live** shows the tempo master large, for a tablet or second screen. The other tabs hold the details: CDJs, MIDI & Mapping, grandMA3 and Log; Live is the last tab.
 
 MIDI and DJ Link can each be switched off in their tab (saved in `boothmate.toml`). Off means off: no thread, no sockets, no timers. Mappings and tempo rules stay.
 
@@ -49,6 +49,8 @@ To get play state and beat numbers, Boothmate announces itself as a silent virtu
 ## Notes
 
 grandMA3 itself binds the OSC line's port. Boothmate shares it on `127.0.0.1` (address reuse); if it cannot, the web page shows the error and Boothmate keeps retrying. In that case switch Enable Output off, wait until Boothmate listens, and switch it on again.
+
+The window uses the system web view: WebKit on macOS, Microsoft Edge WebView2 on Windows (part of Windows 10 and 11). On macOS the menu has **View > Open in Browser** and **Reload** (Cmd+R).
 
 On macOS, allow the unsigned binary once: right-click > Open, or `xattr -d com.apple.quarantine boothmate-mac`.
 

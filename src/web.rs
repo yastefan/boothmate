@@ -18,6 +18,31 @@ use tokio_stream::{Stream, StreamExt};
 
 const INDEX: &str = include_str!("web/index.html");
 
+/// The addresses a browser can open for `listen`, and whether only this computer can reach
+/// it. An unspecified address (`0.0.0.0`) lists the computer's network addresses.
+pub fn urls(listen: &str) -> (Vec<String>, bool) {
+    let Ok(addr) = listen.parse::<std::net::SocketAddr>() else {
+        return (vec![format!("http://{listen}/")], false);
+    };
+    let port = addr.port();
+    if !addr.ip().is_unspecified() {
+        return (vec![format!("http://{addr}/")], addr.ip().is_loopback());
+    }
+    let mut urls: Vec<String> = netdev::get_interfaces()
+        .iter()
+        .filter(|i| i.is_up() && !i.is_loopback())
+        .flat_map(|i| i.ipv4.iter().map(|n| n.addr()))
+        .filter(|ip| !ip.is_link_local())
+        .map(|ip| format!("http://{ip}:{port}/"))
+        .collect();
+    urls.sort();
+    urls.dedup();
+    if urls.is_empty() {
+        urls.push(format!("http://127.0.0.1:{port}/"));
+    }
+    (urls, false)
+}
+
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/", get(|| async { Html(INDEX) }))
@@ -297,4 +322,24 @@ async fn events(Ax(app): Ax<Arc<App>>) -> Sse<impl Stream<Item = Result<Event, I
             Ok(Event::default().data(json))
         });
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::urls;
+
+    #[test]
+    fn web_urls() {
+        assert_eq!(
+            urls("127.0.0.1:8088"),
+            (vec!["http://127.0.0.1:8088/".to_string()], true)
+        );
+        assert_eq!(
+            urls("192.168.1.20:80"),
+            (vec!["http://192.168.1.20:80/".to_string()], false)
+        );
+        let (all, local) = urls("0.0.0.0:8088");
+        assert!(!local && !all.is_empty());
+        assert!(all.iter().all(|u| u.ends_with(":8088/")));
+    }
 }
