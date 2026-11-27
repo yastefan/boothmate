@@ -163,6 +163,25 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Key functions that always leave the sequence running when pressed. Others (`Toggle`,
+/// `Flash`, `Temp`, `Swop`, ...) may switch it either way; their result is read from the plugin.
+pub fn key_starts(action: &str) -> bool {
+    matches!(
+        action,
+        "Go+" | "Go-" | "Go" | "GoFast+" | "GoFast-" | "On" | "Top" | "Goto" | "Load"
+    )
+}
+
+/// Whether an OSC event leaves the running state unknown, so that the plugin has to read it.
+pub fn state_unknown_after(ev: &OscEvent) -> bool {
+    match ev {
+        OscEvent::SequenceKey { action, .. } => {
+            !(key_starts(action) || action == "Off" || action == "Pause")
+        }
+        _ => false,
+    }
+}
+
 impl State {
     pub fn apply_osc(&mut self, ev: OscEvent) {
         let now = now_ms();
@@ -188,7 +207,7 @@ impl State {
                     }
                     "Pause" => s.playback = Playback::Paused,
                     _ => {
-                        if state != 0 {
+                        if state != 0 && key_starts(&action) {
                             s.playback = Playback::On;
                         }
                         if cue.is_some() {
@@ -320,6 +339,22 @@ mod tests {
         assert_eq!(m.values["FaderMaster"], 60.0);
         assert_eq!(m.text.as_deref(), Some("120 BPM"));
         assert_eq!(m.label, "Speed 1");
+    }
+
+    #[test]
+    fn toggle_does_not_guess_the_state() {
+        let mut st = State::default();
+        st.apply_osc(key(2, "Go+", 1, "MCP Test;1 Warm"));
+        assert_eq!(st.sequences[&2].playback, Playback::On);
+        // A toggle press may switch it off: keep the old state, the plugin reads the new one.
+        let toggle = key(2, "Toggle", 1, "MCP Test");
+        assert!(state_unknown_after(&toggle));
+        st.apply_osc(toggle);
+        st.sequences.get_mut(&2).unwrap().playback = Playback::Off; // as read by the plugin
+        st.apply_osc(key(2, "Toggle", 0, "MCP Test"));
+        assert_eq!(st.sequences[&2].playback, Playback::Off);
+        assert!(!state_unknown_after(&key(2, "Go+", 1, "MCP Test")));
+        assert!(!state_unknown_after(&key(2, "Off", 1, "MCP Test")));
     }
 
     #[test]

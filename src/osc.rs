@@ -57,7 +57,8 @@ pub async fn run(app: Arc<App>) {
                     Some(ev) => {
                         crate::log::debug(&format!("osc: {} {:?} -> {ev:?}", msg.addr, msg.args));
                         crate::midi::mapping::learn_from_osc(st, &ev);
-                        refresh |= switches_playback(st, &ev);
+                        refresh |=
+                            switches_playback(st, &ev) || crate::state::state_unknown_after(&ev);
                         st.apply_osc(ev);
                     }
                     None => {
