@@ -8,6 +8,7 @@ use crate::state::Executor;
 use crate::App;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -57,6 +58,48 @@ pub fn request_setup(app: &App, apply: bool) -> Result<(), String> {
     };
     let _ = app.plugin_ops.send(op.to_string());
     Ok(())
+}
+
+/// Time grandMA3 gets to apply an OSC key before the plugin reads the page again.
+pub const KEY_REFRESH: Duration = Duration::from_millis(120);
+/// Fader and encoder moves come in bursts: read the page once they stop for this long.
+pub const FADER_REFRESH: Duration = Duration::from_millis(300);
+
+/// Bumped by every request; a pending resync only goes out if no newer request came in.
+static REFRESH_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Asks the plugin for a fresh page snapshot after `delay`. grandMA3 does not send OSC output
+/// for changes caused by OSC input (a key toggling a sequence, a fader pulled to 0 switching it
+/// off), so this is how input from Boothmate gets its feedback. A newer request replaces a
+/// pending one, so a fader move sends one resync when it stops.
+pub fn refresh_after(app: &App, delay: Duration) {
+    request_resync(app.plugin_ops.clone(), delay);
+}
+
+/// Asks for a page snapshot after [`KEY_REFRESH`], independent of the debounced requests: a
+/// fader crossing 0 should show the new running state while the fader is still moving.
+pub fn refresh_soon(app: &App) {
+    let ops = app.plugin_ops.clone();
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    rt.spawn(async move {
+        tokio::time::sleep(KEY_REFRESH).await;
+        let _ = ops.send(json!({ "op": "resync" }).to_string());
+    });
+}
+
+fn request_resync(ops: tokio::sync::broadcast::Sender<String>, delay: Duration) {
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    let gen = REFRESH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    rt.spawn(async move {
+        tokio::time::sleep(delay).await;
+        if REFRESH_GEN.load(Ordering::SeqCst) == gen {
+            let _ = ops.send(json!({ "op": "resync" }).to_string());
+        }
+    });
 }
 
 pub async fn run(app: Arc<App>) {
@@ -242,5 +285,26 @@ mod tests {
                 msg: Some("x".into())
             }
         );
+    }
+
+    #[tokio::test]
+    async fn resync_is_requested_once_input_stops() {
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<String>(8);
+        // A burst of fader moves: only the last request sends.
+        for _ in 0..5 {
+            request_resync(tx.clone(), Duration::from_millis(50));
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "not at once: grandMA3 applies the input first"
+        );
+        let op = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(op, r#"{"op":"resync"}"#);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(rx.try_recv().is_err(), "one resync per burst");
     }
 }
