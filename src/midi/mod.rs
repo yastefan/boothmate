@@ -298,13 +298,12 @@ fn send_feedback(
         let list = mapping::device_feedback(&st, &d.id, d.profile.as_ref());
         let entry = shown.entry(d.id.clone()).or_default();
         for (c, fb) in list {
+            // The hold only keeps motor commands away from a fader under the user's hand. The
+            // shown value follows the state, which keeps Boothmate's own fader values (see
+            // `State::local_until`); freezing it showed the value from before the move.
             let held = mapping::is_motorised(&c) && d.held(&c.name, now);
-            if !held && fb != Fb::default() {
+            if fb != Fb::default() {
                 entry.insert(c.name.clone(), fb.clone());
-            } else if held {
-                if let Some(old) = st.midi.feedback.get(&d.id).and_then(|m| m.get(&c.name)) {
-                    entry.insert(c.name.clone(), old.clone());
-                }
             }
             if !d.output || port == TEST_PORT || held {
                 continue;
