@@ -283,8 +283,9 @@ pub fn assign(st: &mut State, exec: u32) -> Result<(), String> {
 }
 
 /// grandMA3 does not echo values it receives over OSC input. Apply fader moves locally so that
-/// feedback (motor faders, LED rings, the web UI) keeps the new value.
-pub fn apply_local(st: &mut State, action: &Action) {
+/// feedback (motor faders, LED rings, the web UI) keeps the new value. Returns true when a
+/// sequence fader moved away from or to 0, which may switch the sequence on or off.
+pub fn apply_local(st: &mut State, action: &Action) -> bool {
     let (page, exec, set): (u32, u32, Box<dyn Fn(f32) -> f32>) = match *action {
         Action::Fader { page, exec, value } => (page, exec, Box::new(move |_| value)),
         Action::Encoder { page, exec, delta } => (
@@ -292,13 +293,13 @@ pub fn apply_local(st: &mut State, action: &Action) {
             exec,
             Box::new(move |v: f32| (v + delta).clamp(0.0, 100.0)),
         ),
-        Action::Key { .. } => return,
+        Action::Key { .. } => return false,
     };
     if st.page != Some(page) {
-        return;
+        return false;
     }
     let Some(e) = st.executors.iter_mut().find(|e| e.no == exec) else {
-        return;
+        return false;
     };
     let now = crate::state::now_ms();
     if e.class == "Sequence" {
@@ -309,9 +310,11 @@ pub fn apply_local(st: &mut State, action: &Action) {
                 .copied()
                 .or(e.fader)
                 .unwrap_or(0.0);
-            s.faders.insert("FaderMaster".into(), set(v));
+            let new = set(v);
+            s.faders.insert("FaderMaster".into(), new);
             s.updated = now;
-            return;
+            s.local_until = now + crate::state::LOCAL_FADER_MS;
+            return (v <= 0.0) != (new <= 0.0);
         }
     }
     if let Some(m) = e.addr.as_ref().and_then(|a| st.masters.get_mut(a)) {
@@ -323,9 +326,11 @@ pub fn apply_local(st: &mut State, action: &Action) {
             .unwrap_or(0.0);
         m.values.insert("FaderMaster".into(), set(v));
         m.updated = now;
-        return;
+        m.local_until = now + crate::state::LOCAL_FADER_MS;
+        return false;
     }
     e.fader = Some(set(e.fader.unwrap_or(0.0)));
+    false
 }
 
 pub fn target_name(m: &Mapping) -> String {
@@ -717,15 +722,26 @@ mod tests {
         assert_eq!((fb.level, fb.value), (Level::On, Some(40.0)));
 
         // Own fader moves stick (grandMA3 does not echo OSC input).
-        apply_local(
+        assert!(!apply_local(
             &mut st,
             &Action::Fader {
                 page: 1,
                 exec: 201,
                 value: 70.0,
             },
-        );
+        ));
         assert_eq!(feedback(&st, &m).value, Some(70.0));
+        let fader = |value| Action::Fader {
+            page: 1,
+            exec: 201,
+            value,
+        };
+        assert!(apply_local(&mut st, &fader(0.0)), "to 0: may switch off");
+        assert!(
+            apply_local(&mut st, &fader(5.0)),
+            "away from 0: may switch on"
+        );
+        assert!(!apply_local(&mut st, &fader(70.0)));
         apply_local(
             &mut st,
             &Action::Encoder {

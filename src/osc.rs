@@ -2,7 +2,7 @@
 
 use crate::midi::mapping::Action;
 use crate::profile::{InputAddresses, Profile, Target};
-use crate::state::{now_ms, OscEvent};
+use crate::state::{now_ms, OscEvent, State};
 use crate::App;
 use rosc::{OscMessage, OscPacket, OscType};
 use std::sync::Arc;
@@ -48,6 +48,7 @@ pub async fn run(app: Arc<App>) {
         let mut messages = Vec::new();
         flatten(packet, &mut messages);
         let profile = app.profile.read().unwrap().clone();
+        let mut refresh = false;
         app.update(|st| {
             for msg in messages {
                 st.connections.osc_packets += 1;
@@ -56,6 +57,8 @@ pub async fn run(app: Arc<App>) {
                     Some(ev) => {
                         crate::log::debug(&format!("osc: {} {:?} -> {ev:?}", msg.addr, msg.args));
                         crate::midi::mapping::learn_from_osc(st, &ev);
+                        refresh |=
+                            switches_playback(st, &ev) || crate::state::state_unknown_after(&ev);
                         st.apply_osc(ev);
                     }
                     None => {
@@ -68,6 +71,31 @@ pub async fn run(app: Arc<App>) {
                 }
             }
         });
+        if refresh {
+            crate::plugin::refresh_soon(&app);
+        }
+    }
+}
+
+/// Whether a fader event may switch a sequence on or off (moved away from or to 0). grandMA3
+/// sends no key event for that, so the running state has to be read from the plugin.
+fn switches_playback(st: &State, ev: &OscEvent) -> bool {
+    let OscEvent::SequenceFader {
+        seq, token, value, ..
+    } = ev
+    else {
+        return false;
+    };
+    if token != "FaderMaster" {
+        return false;
+    }
+    let old = st
+        .sequences
+        .get(seq)
+        .and_then(|s| s.faders.get("FaderMaster").copied());
+    match old {
+        Some(old) => (old <= 0.0) != (*value <= 0.0),
+        None => true,
     }
 }
 
@@ -350,5 +378,36 @@ mod tests {
         let mut out = Vec::new();
         flatten(p, &mut out);
         assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn fader_through_zero_needs_a_resync() {
+        let fader = |value| OscEvent::SequenceFader {
+            seq: 1,
+            token: "FaderMaster".into(),
+            value,
+            name: None,
+        };
+        let mut st = State::default();
+        assert!(switches_playback(&st, &fader(0.0)), "unknown start value");
+        st.apply_osc(fader(0.0));
+        assert!(
+            switches_playback(&st, &fader(4.0)),
+            "up from 0: may switch on"
+        );
+        st.apply_osc(fader(4.0));
+        assert!(!switches_playback(&st, &fader(30.0)));
+        st.apply_osc(fader(30.0));
+        assert!(
+            switches_playback(&st, &fader(0.0)),
+            "down to 0: may switch off"
+        );
+        let other = OscEvent::SequenceFader {
+            seq: 1,
+            token: "FaderTemp".into(),
+            value: 50.0,
+            name: None,
+        };
+        assert!(!switches_playback(&st, &other));
     }
 }

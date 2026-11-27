@@ -246,6 +246,7 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
     let step = d.profile.as_ref().map(|p| p.encoder_step).unwrap_or(1.0);
     let mut actions = vec![];
     let mut read_only = false;
+    let mut through_zero = false;
     let mut name = String::new();
     app.update(|st| {
         let control = mapping::resolve(st, &d.id, d.profile.as_ref(), &input.addr);
@@ -259,7 +260,7 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
         read_only = st.connections.profile_fallback;
         if !read_only {
             for a in &actions {
-                mapping::apply_local(st, a);
+                through_zero |= mapping::apply_local(st, a);
             }
         }
         if read_only && !actions.is_empty() {
@@ -270,8 +271,22 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
     d.last_input.insert(name, now);
     crate::log::debug(&format!("midi: {} {:?} -> {actions:?}", d.id, input));
     if !read_only {
+        let delay = match actions.first() {
+            Some(mapping::Action::Key { .. }) => Some(crate::plugin::KEY_REFRESH),
+            Some(_) => Some(crate::plugin::FADER_REFRESH),
+            None => None,
+        };
         for a in actions {
             crate::osc::send_action(app, &a);
+        }
+        if through_zero {
+            // Moved away from or to 0: the sequence may have switched on or off just now.
+            crate::plugin::refresh_soon(app);
+        }
+        if let Some(delay) = delay {
+            // grandMA3 does not report what OSC input did (a key toggling a sequence, a fader
+            // at 0 switching it off), so ask the plugin to read the page again afterwards.
+            crate::plugin::refresh_after(app, delay);
         }
     }
 }
@@ -288,13 +303,12 @@ fn send_feedback(
         let list = mapping::device_feedback(&st, &d.id, d.profile.as_ref());
         let entry = shown.entry(d.id.clone()).or_default();
         for (c, fb) in list {
+            // The hold only keeps motor commands away from a fader under the user's hand. The
+            // shown value follows the state, which keeps Boothmate's own fader values (see
+            // `State::local_until`); freezing it showed the value from before the move.
             let held = mapping::is_motorised(&c) && d.held(&c.name, now);
-            if !held && fb != Fb::default() {
+            if fb != Fb::default() {
                 entry.insert(c.name.clone(), fb.clone());
-            } else if held {
-                if let Some(old) = st.midi.feedback.get(&d.id).and_then(|m| m.get(&c.name)) {
-                    entry.insert(c.name.clone(), old.clone());
-                }
             }
             if !d.output || port == TEST_PORT || held {
                 continue;

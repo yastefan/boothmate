@@ -42,8 +42,12 @@ The plugin listens on TCP (default `127.0.0.1:9002`; `bind=0.0.0.0` only with a 
 | plugin -> Boothmate | `{"ev":"error","msg":"..."}` |
 | Boothmate -> plugin | `{"op":"speed","master":1,"bpm":128.0}`: `Master 3.1 At BPM 128.00` (tempo link) |
 | Boothmate -> plugin | `{"op":"phase","master":1}`: `FastSync Master 3.1`, at most every 4 s, followed by the exact BPM again |
+| Boothmate -> plugin | `{"op":"update","version":"0.4.1","xml":"...","lua":"..."}`: replace the plugin (0.4.0+, see below) |
+| plugin -> Boothmate | `{"ev":"update","state":"restarting"\|"failed","version":"0.4.1","msg":"..."}` |
 
 The plugin sends a page snapshot on connect, on `resync`, when a hooked object changes (assigned objects, their appearances, the page, the Sequences and Appearances pools) and when `CurrentExecPage()` changes (compared every frame, a local call). At most 10 snapshots per second.
+
+**Plugin self-update (0.4.0+).** Lua cannot reload itself, and the code lives in the show. "Update plugin in grandMA3" sends the plugin files that come with Boothmate. The plugin checks them (version, compiles, Boothmate's XML), writes them into the grandMA3 plugin library (`datapools/plugins`, found on `package.path`), stores a macro *Boothmate plugin update* in the first free slot after the last macro and fires it, then stops. The macro runs `Delete Plugin n`, `Import Plugin Library "boothmate.xml" At Plugin n`, `ReloadAllPlugins` and `Plugin "boothmate" "<same arguments>"` with short waits (the sequence verified in gma3-mcp KB-02). The new plugin deletes the macro 5 s after it started (`_G.__boothmate` survives ReloadAllPlugins). Boothmate marks the update done when the new version says hello. The show must be saved to keep it. Plugins before 0.4.0 are updated once by hand.
 
 ## MIDI module
 
@@ -62,6 +66,7 @@ The plugin sends a page snapshot on connect, on `resync`, when a hooked object c
 | Endless encoder | Fader value | CC for the LED ring; input relative, sent as `/PageX/EncoderY` |
 | Display | Executor name | SysEx template per device profile |
 
+- grandMA3 sends no OSC output for changes caused by OSC input. Fader and encoder moves are applied locally; after controller input Boothmate asks the plugin for a new page snapshot (120 ms after a key, 300 ms after the last fader or encoder move), which carries the running state whatever the input did (toggle, go, flash, a fader at 0 switching the sequence off ...).
 - Only the current page is known (plugin snapshot). Mappings fixed to another page stay dark until that page is shown.
 - No plugin connection: buttons go dark, motor faders stay. Unknown grandMA3 version (fallback profile): MIDI does not send.
 
@@ -107,7 +112,7 @@ When a player loads a track, Boothmate asks the database server ("dbserver") of 
 
 Rules in `tempo.toml` (data folder), edited in the web UI. Code in `src/tempo.rs`.
 
-- **Speed masters** follow the effective BPM (pitch included) of the tempo master or a fixed player, times a factor (half or double time). Boothmate sends a new value only on a change of at least 0.05 BPM, at most 5 times a second, and holds the last value while the followed player is stopped. A master change on the CDJs moves the source with it. The plugin sets the tempo with `Master 3.n At BPM x`: exact to about 0.0003 BPM, no oops entries, microseconds per call ([spike](spikes/m4-speedmaster.md)).
+- **Speed masters** follow the effective BPM (pitch included) of the tempo master or a fixed player, times a factor (half or double time). Boothmate sends a new value on a change of at least 0.05 BPM (at most 5 times a second) and repeats the current value once a second, because grandMA3 does not report its speed masters back: a master moved by hand snaps back to the CDJ tempo. It holds the last value while the followed player is stopped. A master change on the CDJs moves the source with it. The plugin sets the tempo with `Master 3.n At BPM x`: exact to about 0.0003 BPM, no oops entries, microseconds per call ([spike](spikes/m4-speedmaster.md)).
 - **Phase:** grandMA3 has no command that restarts a speed master's beat. `FastSync Master 3.n` re-syncs the phasers on that master but counts as a Learn tap (two taps 100 ms apart set 225 BPM). Option `phase = "phrase"` sends one FastSync on the first beat of each 8-bar phrase; the plugin rate-limits it and restores the exact BPM right after. Chases with cue timing from a speed master are not re-phased by it.
 - **Beat actions** press an executor key (OSC input, 60 ms tap) on every beat, downbeat, 4 bars, phrase (8 bars), track change or master change, from the tempo master or a fixed player. The page is fixed or the current one.
 - Nothing is sent without the plugin connection or with a fallback profile.

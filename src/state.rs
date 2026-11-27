@@ -28,7 +28,14 @@ pub struct Sequence {
     pub faders: BTreeMap<String, f32>,
     /// Unix time in ms of the last change.
     pub updated: u64,
+    /// Until this time (ms) the fader value set from Boothmate's own input wins over values
+    /// read back from grandMA3, which may still be on an older position.
+    #[serde(skip)]
+    pub local_until: u64,
 }
+
+/// How long a fader value set from Boothmate's own input wins over read-back values (ms).
+pub const LOCAL_FADER_MS: u64 = 1_500;
 
 /// One executor of the current page, as reported by the plugin.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -63,6 +70,9 @@ pub struct Master {
     pub values: BTreeMap<String, f32>,
     pub text: Option<String>,
     pub updated: u64,
+    /// See [`Sequence::local_until`].
+    #[serde(skip)]
+    pub local_until: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -98,6 +108,7 @@ pub struct State {
     pub timecode: crate::timecode::TimecodeState,
     pub modules: Modules,
     pub ma3_setup: crate::setup::Ma3Setup,
+    pub plugin_update: crate::plugin_update::PluginUpdate,
 }
 
 /// Parts of Boothmate that can be switched off. Off means no threads, sockets or timers.
@@ -153,6 +164,25 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Key functions that always leave the sequence running when pressed. Others (`Toggle`,
+/// `Flash`, `Temp`, `Swop`, ...) may switch it either way; their result is read from the plugin.
+pub fn key_starts(action: &str) -> bool {
+    matches!(
+        action,
+        "Go+" | "Go-" | "Go" | "GoFast+" | "GoFast-" | "On" | "Top" | "Goto" | "Load"
+    )
+}
+
+/// Whether an OSC event leaves the running state unknown, so that the plugin has to read it.
+pub fn state_unknown_after(ev: &OscEvent) -> bool {
+    match ev {
+        OscEvent::SequenceKey { action, .. } => {
+            !(key_starts(action) || action == "Off" || action == "Pause")
+        }
+        _ => false,
+    }
+}
+
 impl State {
     pub fn apply_osc(&mut self, ev: OscEvent) {
         let now = now_ms();
@@ -178,7 +208,7 @@ impl State {
                     }
                     "Pause" => s.playback = Playback::Paused,
                     _ => {
-                        if state != 0 {
+                        if state != 0 && key_starts(&action) {
                             s.playback = Playback::On;
                         }
                         if cue.is_some() {
@@ -200,7 +230,9 @@ impl State {
                 if let Some(n) = name.filter(|n| !n.is_empty()) {
                     s.name = n;
                 }
-                s.faders.insert(token, value);
+                if token != "FaderMaster" || now >= s.local_until {
+                    s.faders.insert(token, value);
+                }
                 s.updated = now;
             }
             OscEvent::Master {
@@ -212,7 +244,7 @@ impl State {
             } => {
                 let m = self.masters.entry(key).or_default();
                 m.label = label;
-                if let Some(v) = value {
+                if let Some(v) = value.filter(|_| token != "FaderMaster" || now >= m.local_until) {
                     m.values.insert(token, v);
                 }
                 if text.is_some() {
@@ -238,7 +270,7 @@ impl State {
                 s.playback = if a { Playback::On } else { Playback::Off };
                 s.cue = if a { e.cue.clone() } else { None };
             }
-            if let Some(f) = e.fader {
+            if let Some(f) = e.fader.filter(|_| now >= s.local_until) {
                 s.faders.insert("FaderMaster".into(), f);
             }
             s.updated = now;
@@ -308,6 +340,61 @@ mod tests {
         assert_eq!(m.values["FaderMaster"], 60.0);
         assert_eq!(m.text.as_deref(), Some("120 BPM"));
         assert_eq!(m.label, "Speed 1");
+    }
+
+    #[test]
+    fn toggle_does_not_guess_the_state() {
+        let mut st = State::default();
+        st.apply_osc(key(2, "Go+", 1, "MCP Test;1 Warm"));
+        assert_eq!(st.sequences[&2].playback, Playback::On);
+        // A toggle press may switch it off: keep the old state, the plugin reads the new one.
+        let toggle = key(2, "Toggle", 1, "MCP Test");
+        assert!(state_unknown_after(&toggle));
+        st.apply_osc(toggle);
+        st.sequences.get_mut(&2).unwrap().playback = Playback::Off; // as read by the plugin
+        st.apply_osc(key(2, "Toggle", 0, "MCP Test"));
+        assert_eq!(st.sequences[&2].playback, Playback::Off);
+        assert!(!state_unknown_after(&key(2, "Go+", 1, "MCP Test")));
+        assert!(!state_unknown_after(&key(2, "Off", 1, "MCP Test")));
+    }
+
+    #[test]
+    fn own_fader_moves_win_over_read_back() {
+        // A snapshot or OSC output right after a fader move from Boothmate may carry the old
+        // position (or the one grandMA3 had when the sequence switched on or off).
+        let mut st = State::default();
+        let s = st.sequences.entry(1).or_default();
+        s.faders.insert("FaderMaster".into(), 70.0);
+        s.local_until = now_ms() + LOCAL_FADER_MS;
+        let ex = Executor {
+            no: 201,
+            class: "Sequence".into(),
+            obj: Some(1),
+            name: "S1".into(),
+            addr: None,
+            color: None,
+            active: Some(false),
+            fader: Some(3.0),
+            cue: None,
+        };
+        st.apply_page(Some(1), vec![ex.clone()]);
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 70.0);
+        assert_eq!(
+            st.sequences[&1].playback,
+            Playback::Off,
+            "state still comes through"
+        );
+        st.apply_osc(OscEvent::SequenceFader {
+            seq: 1,
+            token: "FaderMaster".into(),
+            value: 3.0,
+            name: None,
+        });
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 70.0);
+        // Later, grandMA3's value counts again.
+        st.sequences.get_mut(&1).unwrap().local_until = 0;
+        st.apply_page(Some(1), vec![ex]);
+        assert_eq!(st.sequences[&1].faders["FaderMaster"], 3.0);
     }
 
     #[test]

@@ -1,7 +1,9 @@
 //! Tempo link: the tempo and beats of the CDJs drive grandMA3.
 //!
 //! - Speed masters follow the BPM of the tempo master (or a fixed player), through the Lua
-//!   plugin (`{"op":"speed","master":1,"bpm":128.0}` = `Master 3.1 At BPM 128`), optionally
+//!   plugin (`{"op":"speed","master":1,"bpm":128.0}` = `Master 3.1 At BPM 128`). The value is
+//!   sent on every change and again once a second, because grandMA3 does not report its speed
+//!   masters back (a master moved by hand would otherwise keep the wrong tempo). Optionally
 //!   with a phaser re-sync on the first beat of each phrase (`{"op":"phase","master":1}` =
 //!   `FastSync`). grandMA3 counts a FastSync as a Learn tap, so it is only sent once per phrase
 //!   and the plugin restores the exact tempo right after it.
@@ -23,6 +25,9 @@ use std::time::Duration;
 pub const BPM_STEP: f32 = 0.05;
 /// At most one speed update per master in this time (ms).
 pub const SPEED_INTERVAL_MS: u64 = 200;
+/// The current BPM is sent again after this time (ms) even when it did not change, so that a
+/// speed master moved in grandMA3 (or reset by a FastSync tap) snaps back to the CDJ tempo.
+pub const SPEED_REFRESH_MS: u64 = 1_000;
 /// Key press length for beat actions.
 const TAP_MS: u64 = 60;
 
@@ -161,7 +166,9 @@ impl Engine {
             let due = match self.sent.get(&l.master) {
                 None => true,
                 Some(&(last, t)) => {
-                    (bpm - last).abs() >= BPM_STEP && now.saturating_sub(t) >= SPEED_INTERVAL_MS
+                    let age = now.saturating_sub(t);
+                    ((bpm - last).abs() >= BPM_STEP && age >= SPEED_INTERVAL_MS)
+                        || age >= SPEED_REFRESH_MS
                 }
             };
             if due {
@@ -497,6 +504,26 @@ mod tests {
             1300,
         );
         assert!(e.step(&rules, &cdj, &[], 1300).is_empty());
+    }
+
+    #[test]
+    fn speed_is_refreshed_without_changes() {
+        // grandMA3 does not report its speed masters: re-send the same BPM now and then, so a
+        // master moved by hand snaps back, also when the phaser sync is off.
+        let rules: TempoFile = toml::from_str("[[speed]]\nmaster = 1").unwrap();
+        let mut cdj = CdjState::default();
+        let mut e = Engine::default();
+        let ev = feed(&mut cdj, STATUS_PORT, &status(1, 1, true, true, 128.0), 0);
+        assert_eq!(e.step(&rules, &cdj, &ev, 0).len(), 1);
+        assert!(e.step(&rules, &cdj, &[], SPEED_REFRESH_MS - 1).is_empty());
+        assert_eq!(
+            e.step(&rules, &cdj, &[], SPEED_REFRESH_MS),
+            vec![Out::Speed {
+                master: 1,
+                bpm: 128.0
+            }]
+        );
+        assert!(e.step(&rules, &cdj, &[], SPEED_REFRESH_MS + 300).is_empty());
     }
 
     #[test]
