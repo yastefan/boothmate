@@ -71,6 +71,19 @@ pub fn refresh_after(app: &App, delay: Duration) {
     request_resync(app.plugin_ops.clone(), delay);
 }
 
+/// Asks for a page snapshot after [`KEY_REFRESH`], independent of the debounced requests: a
+/// fader crossing 0 should show the new running state while the fader is still moving.
+pub fn refresh_soon(app: &App) {
+    let ops = app.plugin_ops.clone();
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    rt.spawn(async move {
+        tokio::time::sleep(KEY_REFRESH).await;
+        let _ = ops.send(json!({ "op": "resync" }).to_string());
+    });
+}
+
 fn request_resync(ops: tokio::sync::broadcast::Sender<String>, delay: Duration) {
     let Ok(rt) = tokio::runtime::Handle::try_current() else {
         return;

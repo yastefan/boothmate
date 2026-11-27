@@ -246,6 +246,7 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
     let step = d.profile.as_ref().map(|p| p.encoder_step).unwrap_or(1.0);
     let mut actions = vec![];
     let mut read_only = false;
+    let mut through_zero = false;
     let mut name = String::new();
     app.update(|st| {
         let control = mapping::resolve(st, &d.id, d.profile.as_ref(), &input.addr);
@@ -259,7 +260,7 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
         read_only = st.connections.profile_fallback;
         if !read_only {
             for a in &actions {
-                mapping::apply_local(st, a);
+                through_zero |= mapping::apply_local(st, a);
             }
         }
         if read_only && !actions.is_empty() {
@@ -277,6 +278,10 @@ fn handle_input(app: &App, d: &mut Device, bytes: &[u8]) {
         };
         for a in actions {
             crate::osc::send_action(app, &a);
+        }
+        if through_zero {
+            // Moved away from or to 0: the sequence may have switched on or off just now.
+            crate::plugin::refresh_soon(app);
         }
         if let Some(delay) = delay {
             // grandMA3 does not report what OSC input did (a key toggling a sequence, a fader
